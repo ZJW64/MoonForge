@@ -17,8 +17,6 @@ $ moon run cmd/main -- list-rules
       为 struct 生成 T::diff(self, other) -> Array[String]，返回发生变化的字段名（字段类型需实现 Eq）
 ```    
 
----
-
 ## 1. 它解决什么问题
 
 MoonBit 的 `derive(...)` **只覆盖编译器内置的 trait 白名单**。官方文档 [E4077](https://docs.moonbitlang.com/zh-cn/latest/language/error_codes/E4077.html) 明写：
@@ -46,7 +44,7 @@ MoonBit 的 `derive(...)` **只覆盖编译器内置的 trait 白名单**。官�
 - ❌ **不声称扩展了 `derive()`** —— `derive()` 的行为完全不受影响；
 - ⛔ **不是编译期执行引擎**：MoonBit 目前没有 comptime，生成发生在 `moon build` **之前**的独立阶段。这一点在 [`docs/项目方案（完善版）.md`](docs/项目方案（完善版）.md) 第 5.2 与第 9 节有详细论证。
 
-## 3. 30 秒上手
+## 3. 30 秒上手，上手易操作
 
 ```bash
 # 1. 安装工具链（若尚未安装）
