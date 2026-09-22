@@ -79,7 +79,7 @@ pub(all) struct User {
   /// @min(0) @max(150)
   age : Int
 
-  /// 邮箱（无注解 → 不产生检查代码）
+  /// 邮箱
   email : String
 } derive(Eq, Debug)
 ```
