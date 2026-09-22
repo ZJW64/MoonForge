@@ -47,13 +47,13 @@ MoonBit 的 `derive(...)` **只覆盖编译器内置的 trait 白名单**。官�
 ## 3. 30 秒上手，上手易操作
 
 ```bash
-# 1. 安装工具链（若尚未安装）
+# 1. 安装工具链）
 curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
 
 # 2. 编译检查
 moon check
 
-# 3. 生成派生代码（把 examples/ 换成你的源码目录）
+# 3. 生成派生代码
 moon run cmd/main -- gen examples
 
 # 4. 运行测试
