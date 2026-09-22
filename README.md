@@ -15,7 +15,7 @@ $ moon run cmd/main -- list-rules
       为 struct 生成 T::validate(self) -> Result[Unit, String]，由字段注解 @nonempty/@min/@max/@positive 驱动
   diff
       为 struct 生成 T::diff(self, other) -> Array[String]，返回发生变化的字段名（字段类型需实现 Eq）
-```
+```    
 
 ---
 
@@ -313,3 +313,5 @@ Total tests: 62, passed: 62, failed: 0
 ## 12. 许可证
 
 [Apache License 2.0](LICENSE)
+
+    
