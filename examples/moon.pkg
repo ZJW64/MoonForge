@@ -1,0 +1,5 @@
+warnings = "-79"
+
+import {
+  "moonbitlang/core/debug" @debug,
+} for "wbtest"

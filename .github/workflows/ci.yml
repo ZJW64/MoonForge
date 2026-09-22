@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # JS 后端需要 node 来运行 CLI（moonforge check / gen）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 安装 MoonBit 工具链
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: 版本信息
+        run: moon version
+
+      - name: 编译检查
+        run: moon check
+
+      - name: 生成物漂移检查
+        run: moon run cmd/main -- check examples
+
+      - name: 运行测试
+        run: moon test --target js
+
+      - name: 端到端校验（含漂移负例）
+        run: bash scripts/e2e.sh

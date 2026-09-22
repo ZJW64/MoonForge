@@ -1,0 +1,9 @@
+warnings = "-79"
+
+import {
+  "moonforge" @forge,
+}
+
+import {
+  "moonbitlang/core/debug" @debug,
+} for "wbtest"

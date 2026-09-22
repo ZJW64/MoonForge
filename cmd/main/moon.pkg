@@ -1,0 +1,14 @@
+warnings = "-79"
+
+import {
+  "moonforge" @forge,
+  "moonforge/rules" @rules,
+  "moonbitlang/x/fs" @fs,
+  "moonbitlang/core/env" @env,
+}
+
+import {
+  "moonbitlang/core/debug" @debug,
+} for "wbtest"
+
+pkgtype(kind: "executable")

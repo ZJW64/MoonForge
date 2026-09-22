@@ -1,0 +1,15 @@
+# MoonBit 构建产物
+target/
+_build/
+.mooncakes/
+.moon-lock
+
+# 编辑器 / 操作系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 本地临时文件
+*.log
+/tmp/

@@ -1,0 +1,7 @@
+// 79 = implicit_impl_as_method：核心库正在从 Show 迁移到 Debug，
+// 期间每条 derive 都会报这条迁移提示，与本项目代码质量无关，故关闭。
+warnings = "-79"
+
+import {
+  "moonbitlang/core/debug" @debug,
+} for "wbtest"
