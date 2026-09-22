@@ -267,7 +267,7 @@ pub(all) struct Rule {
 @debug.debug_inspect(a.diff(b), content="[\"age\"]")
 ```
 
-这些方法在本仓库里**没有任何手写实现**——这就是"生成代码真的能用"的最直接证据。
+这些方法在本仓库里没有任何手写实现——这就是"生成代码真的能用"的最直接证据。
 
 ```bash
 $ moon test --target js
