@@ -1,2 +1,9 @@
-# Auto detect text files and perform LF normalization
+# 默认按文本处理并做换行归一化
 * text=auto
+
+# 下面两类文件与“字节稳定”直接相关，必须钉死为 LF：
+#  - *.mbt 既是被解析的输入，也是被生成的输出；生成物要与源码在同一套换行
+#    约定下逐字节比较（这是 `moonforge check` 判定漂移的依据）。
+#  - *.sh  在 Windows 的 Git Bash / WSL 下执行，CRLF 会让解释器直接报错。
+*.mbt text eol=lf
+*.sh  text eol=lf

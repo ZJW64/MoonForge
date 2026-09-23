@@ -10,6 +10,11 @@ _build/
 .DS_Store
 Thumbs.db
 
+# R 会话历史：本项目与 R 无关，历史上曾被误提交，这里一并挡住
+.Rhistory
+*.Rhistory
+.Rproj.user/
+
 # 本地临时文件
 *.log
 /tmp/
