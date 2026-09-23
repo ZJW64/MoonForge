@@ -26,7 +26,7 @@ test "注册表：三条内置规则都已注册且名字合法" {
   @debug.debug_inspect(
     @forge.rule_names(all()),
     content=(
-      #|["field_names", "validate", "diff"]
+      #|["field_names", "validate", "diff", "to_pairs"]
     ),
   )
   for r in all() {
@@ -344,6 +344,83 @@ test "validate：跨行书写的字段类型仍能命中数值白名单" {
     apply_rule("validate", src),
     content=(
       #|Some("///|\npub fn A::validate(self : A) -> Result[Unit, String] {\n  if self.n < 0 {\n    return Err(\"A.n must be >= 0\")\n  }\n  Ok(())\n}\n")
+    ),
+  )
+}
+
+///|
+test "to_pairs：只收 String 字段，其余字段留说明行" {
+  let src =
+    #|struct User {
+    #|  name : String
+    #|  age : Int
+    #|  email : String
+    #|}
+  @debug.debug_inspect(
+    apply_rule("to_pairs", src),
+    content=(
+      #|Some("// moonforge: 跳过 User.age 的 to_pairs（类型 Int 不是 String；如何转成字符串由使用者决定）\n\n///|\npub fn User::to_pairs(self : User) -> Array[(String, String)] {\n  [(\"name\", self.name), (\"email\", self.email)]\n}\n")
+    ),
+  )
+}
+
+///|
+test "to_pairs：一个 String 字段都没有时产出空数组（仍然能编译）" {
+  let src =
+    #|struct AllInt {
+    #|  a : Int
+    #|}
+  @debug.debug_inspect(
+    apply_rule("to_pairs", src),
+    content=(
+      #|Some("// moonforge: 跳过 AllInt.a 的 to_pairs（类型 Int 不是 String；如何转成字符串由使用者决定）\n\n///|\npub fn AllInt::to_pairs(self : AllInt) -> Array[(String, String)] {\n  []\n}\n")
+    ),
+  )
+}
+
+///|
+test "to_pairs：字段顺序决定输出顺序，且没有 String 字段时不留空行" {
+  let src =
+    #|struct P {
+    #|  b : String
+    #|  a : String
+    #|}
+  @debug.debug_inspect(
+    apply_rule("to_pairs", src),
+    content=(
+      #|Some("///|\npub fn P::to_pairs(self : P) -> Array[(String, String)] {\n  [(\"b\", self.b), (\"a\", self.a)]\n}\n")
+    ),
+  )
+}
+
+///|
+test "to_pairs：枚举与位置参数结构体都返回 None" {
+  @debug.debug_inspect(
+    apply_rule("to_pairs", "enum E { A }") is None,
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    apply_rule("to_pairs", "struct P(Int, Int)") is None,
+    content=(
+      #|true
+    ),
+  )
+}
+
+///|
+test "to_pairs：nullable 与泛型字段不会被误当成 String" {
+  let src =
+    #|struct A {
+    #|  s : String
+    #|  ns : String?
+    #|  arr : Array[String]
+    #|}
+  @debug.debug_inspect(
+    apply_rule("to_pairs", src),
+    content=(
+      #|Some("// moonforge: 跳过 A.ns 的 to_pairs（类型 String? 不是 String；如何转成字符串由使用者决定）\n// moonforge: 跳过 A.arr 的 to_pairs（类型 Array[String] 不是 String；如何转成字符串由使用者决定）\n\n///|\npub fn A::to_pairs(self : A) -> Array[(String, String)] {\n  [(\"s\", self.s)]\n}\n")
     ),
   )
 }

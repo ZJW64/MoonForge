@@ -9,7 +9,10 @@
 ///|
 /// 用户信息。
 ///
-/// @derive(validate, diff, field_names)
+/// `to_pairs` 只收 `String` 字段：`age` 是 Int，工具不会替用户决定
+/// "Int 该怎么变成字符串"，因此跳过并在生成文件里留下说明行。
+///
+/// @derive(validate, diff, field_names, to_pairs)
 pub(all) struct User {
   /// 姓名
   /// @nonempty

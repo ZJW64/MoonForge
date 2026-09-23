@@ -83,3 +83,32 @@ test "零侵入：没有 @derive 标记的枚举不受影响（仅做构造与�
   @debug.debug_inspect(s == Paid, content="true")
   @debug.debug_inspect(s == Shipped, content="false")
 }
+
+///|
+test "生成的 to_pairs：只包含 String 字段，顺序与声明一致" {
+  let u : User = { name: "Ada", age: 36, email: "ada@example.com", }
+  @debug.debug_inspect(
+    u.to_pairs(),
+    content=(
+      #|[("name", "Ada"), ("email", "ada@example.com")]
+    ),
+  )
+}
+
+///|
+test "生成的 to_pairs：值跟着数据走（不是把字段名返回两遍）" {
+  let a : User = { name: "A", age: 1, email: "a@x", }
+  let b : User = { name: "B", age: 2, email: "b@x", }
+  @debug.debug_inspect(
+    a.to_pairs() == b.to_pairs(),
+    content=(
+      #|false
+    ),
+  )
+  @debug.debug_inspect(
+    a.to_pairs()[0] == ("name", "A") && a.to_pairs()[1] == ("email", "a@x"),
+    content=(
+      #|true
+    ),
+  )
+}

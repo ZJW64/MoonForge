@@ -9,5 +9,5 @@
 ///|
 /// 全部内置规则。数组顺序即 `moonforge list-rules` 的展示顺序。
 pub fn all() -> Array[@forge.Rule] {
-  [field_names(), validate(), diff()]
+  [field_names(), validate(), diff(), to_pairs()]
 }
