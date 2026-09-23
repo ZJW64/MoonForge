@@ -11,6 +11,29 @@
 
 ## [未发布]
 
+### 修复
+
+- **CI 在装完工具链后没有刷新包索引，导致 ubuntu 与 windows 两个平台同时变红。**
+  官方安装脚本只下载工具链与 core，**不会**创建或更新 `~/.moon/registry`；而
+  `cmd/main` 依赖 `moonbitlang/x`（用它的 `fs`），索引缺失时 `moon check` 在
+  "计算构建计划"阶段就直接退出 —— **实测 0.09 秒、退出码非零，而且不产生任何
+  编译错误信息**，极易被误判成代码问题：
+
+  ```
+  Warning: you may need to run `moon update` to update the registry
+  Error: Failed to calculate build plan
+  Caused by: Failed to resolve registry dependency `moonbitlang/x`
+             for module `moonforge`: module was not found in the registry
+  ```
+
+  现象上有一个很好的判别特征：`moon version` 与 `moon fmt --check` 都通过
+  （这两个命令不需要解析依赖），**只有 `moon check` 会秒失败**。
+  → 在安装步骤后新增一步 `moon update`。
+  复现方式：把 `~/.moon/registry` 移走再跑 `moon check`，即可看到同样的报错。
+- 安装工具链的步骤补上 `set -euo pipefail`。`curl ... | bash` 的退出码取的是
+  `bash` 的，下载被截断时 bash 读到 EOF 会返回 0 —— 步骤显示成功，工具链却是
+  残缺的，报错会出现在毫不相关的地方。
+
 ## [0.2.0] - 2026-09-23
 
 本轮的主题是**让工具与它自己的判据自洽**：修掉的每一条 bug 都是同一个形状 ——

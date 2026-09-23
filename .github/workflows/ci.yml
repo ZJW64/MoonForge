@@ -27,6 +27,10 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
+          # pipefail 是必需的：`curl ... | bash` 的退出码取的是 bash 的，
+          # 下载被截断时 bash 读到 EOF 会返回 0 —— 步骤显示成功，工具链却是
+          # 残缺的，报错会出现在毫不相关的地方。
+          set -euo pipefail
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
@@ -40,6 +44,25 @@ jobs:
 
       - name: 版本信息
         run: moon version
+
+      # 装完工具链必须刷新一次包索引，否则下一步的 `moon check` 会在
+      # "计算构建计划"阶段直接退出 —— 实测 0.09 秒、退出码非零，而且**没有任何
+      # 编译错误**，极容易被误判成代码问题：
+      #
+      #   Warning: you may need to run `moon update` to update the registry
+      #   Error: Failed to calculate build plan
+      #   Caused by: Failed to resolve registry dependency `moonbitlang/x`
+      #              for module `moonforge`: module was not found in the registry
+      #
+      # 原因是官方安装脚本只下载工具链与 core，不创建/更新 ~/.moon/registry；
+      # 而本项目的 cmd/main 依赖 moonbitlang/x（用它的 fs），索引是必需品。
+      # 注意：`moon fmt --check` 不需要依赖，所以它会照样通过 —— 只有需要
+      # 解析依赖的 `moon check` 才会暴露问题。
+      - name: 刷新包索引
+        shell: bash
+        run: |
+          set -euo pipefail
+          moon update
 
       # 格式化检查排在编译之前：格式化差异与编译错误是两类问题，
       # 先报出来更省事。注意 `moon fmt --check` 在"有差异"时给的是**非零**
