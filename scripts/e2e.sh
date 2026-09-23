@@ -3,38 +3,66 @@
 #
 #   bash scripts/e2e.sh
 #
-# 五个阶段：
+# 六个阶段：
 #   1. 漂移检查：仓库里已提交的生成物必须与当前源文件一致
 #   2. 测试：词法 / 语法 / 规则 / 金样 / 幂等 / 使用生成代码的端到端测试
 #   3. 编译检查：真实编译生成出来的代码（这一步才是“生成代码正确”的证据）
 #   4. 格式化稳定性：跑过 `moon fmt` 之后生成物依然无漂移
 #      —— 生成物是提交进仓库的，用户迟早会格式化；如果生成器的字节输出与
 #         moonfmt 不一致，格式化一次就会让 check 永久报漂移且 gen 修不好。
-#   5. 漂移闭环（在 _build 下的副本上做，不碰仓库里的任何文件）：
+#   5. CRLF 容忍：把生成物换成 CRLF（模拟 Windows 上 core.autocrlf=true 的
+#      检出结果）之后，check 依然必须通过
+#   6. 漂移闭环（在 _build 下的副本上做，不碰仓库里的任何文件）：
 #      改源码 → check 必须给退出码 1 → gen → check 必须回到 0
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 MOON="${MOON:-moon}"
 
-echo "== 1/5 漂移检查：已提交的生成物与源文件一致"
+echo "== 1/6 漂移检查：已提交的生成物与源文件一致"
 "$MOON" run cmd/main -- check examples
 
 echo
-echo "== 2/5 运行测试"
+echo "== 2/6 运行测试"
 "$MOON" test --target js
 
 echo
-echo "== 3/5 编译检查（含自动生成的代码）"
+echo "== 3/6 编译检查（含自动生成的代码）"
 "$MOON" check
 
 echo
-echo "== 4/5 格式化稳定性：moon fmt 之后生成物仍与生成结果一致"
+echo "== 4/6 格式化稳定性：moon fmt 之后生成物仍与生成结果一致"
 "$MOON" fmt
 "$MOON" run cmd/main -- check examples
 
 echo
-echo "== 5/5 漂移闭环：改源码 → check=1 → gen → check=0"
+echo "== 5/6 CRLF 容忍：生成物被换成 CRLF 后 check 仍须通过"
+crlf_dir="_build/e2e-crlf"
+rm -rf "$crlf_dir"
+mkdir -p "$crlf_dir"
+cp examples/models.mbt "$crlf_dir/models.mbt"
+"$MOON" run cmd/main -- gen "$crlf_dir" >/dev/null
+
+# 用 POSIX 的 while+printf 转 CRLF，不依赖 GNU/BSD sed 的差异
+while IFS= read -r line || [ -n "$line" ]; do
+  printf '%s\r\n' "$line"
+done < "$crlf_dir/models_derive_gen.mbt" > "$crlf_dir/models_derive_gen.mbt.tmp"
+mv "$crlf_dir/models_derive_gen.mbt.tmp" "$crlf_dir/models_derive_gen.mbt"
+
+# 先确认转换真的生效，否则这一阶段会"通过"但什么都没测到
+plain_len="$(wc -c < "$crlf_dir/models_derive_gen.mbt" | tr -d ' ')"
+stripped_len="$(tr -d '\r' < "$crlf_dir/models_derive_gen.mbt" | wc -c | tr -d ' ')"
+if [ "$plain_len" -eq "$stripped_len" ]; then
+  echo "FAIL: 生成物里没有 CR，CRLF 转换未生效，本阶段没有测到目标行为"
+  exit 1
+fi
+echo "OK: 生成物已含 CR（$plain_len 字节 vs 去 CR 后 $stripped_len 字节）"
+
+"$MOON" run cmd/main -- check "$crlf_dir" >/dev/null
+echo "OK: CRLF 生成物没有被误判成漂移"
+
+echo
+echo "== 6/6 漂移闭环：改源码 → check=1 → gen → check=0"
 # 全程在 _build 下的副本上进行：即使中途失败也不会把仓库弄脏，
 # 因此不需要“备份 + 还原”这类容易在异常路径上失效的动作。
 probe="_build/e2e-probe"

@@ -8,6 +8,50 @@
 pub const MOONFORGE_VERSION : String = "0.1.0"
 
 ///|
+/// 把 CRLF / 单独的 CR 统一成 LF。
+///
+/// 为什么这是正确性问题而不是洁癖：生成物是提交进版本库的，而 Windows 上
+/// `core.autocrlf=true`（Git for Windows 的默认值）会在检出时把文本文件换成
+/// CRLF。此时磁盘上的生成物是 CRLF、生成器产出的是 LF，`check` 会把它判成
+/// "内容过期" —— 用户按提示跑 `gen`，写回的是 LF 文件，Git 下次检出又换成
+/// CRLF，漂移永远修不掉。这个坑在"生成物进仓库"的设计下是必然会踩到的，
+/// 所以比较与解析前一律先归一化。
+///
+/// 生成侧**只产出 LF**：归一化只作用于"读进来的字节"。
+pub fn normalize_newlines(s : String) -> String {
+  // 快路径：绝大多数文件里没有 CR，直接原样返回，避免无谓拷贝。
+  let n = s.length()
+  let mut i = 0
+  let mut has_cr = false
+  while i < n {
+    if s.at(i) == 13 {
+      has_cr = true
+      break
+    }
+    i = i + 1
+  }
+  if !has_cr {
+    return s
+  }
+  let b = StringBuilder()
+  let mut j = 0
+  while j < n {
+    let c = s.at(j)
+    if c == 13 {
+      b.write_string("\n")
+      // CRLF 里的 LF 一并吃掉：CRLF 与单独出现的 CR 都归一成 LF。
+      if j + 1 < n && s.at(j + 1) == 10 {
+        j = j + 1
+      }
+    } else {
+      b.write_stringview(s[j:j + 1])
+    }
+    j = j + 1
+  }
+  b.to_string()
+}
+
+///|
 /// 生成结果。
 pub(all) struct GenOutcome {
   /// 生成的文件内容；`has_output` 为 false 时是空串。

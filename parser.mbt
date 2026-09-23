@@ -312,8 +312,12 @@ fn parse_type_decl(
 
 ///|
 /// 解析一份 MoonBit 源码，返回其中所有顶层类型定义（保持源码顺序）。
+///
+/// 入口处先把 CRLF/CR 归一成 LF：后续所有偏移量（token 的 start/end、字段
+/// 类型原文的切片）都建立在这份归一化文本上，必须与词法用同一份字符串。
 pub fn parse_source(src : String) -> Array[TypeDef] {
-  let toks = tokenize(src)
+  let text = normalize_newlines(src)
+  let toks = tokenize(text)
   let out : Array[TypeDef] = []
   let docs : Array[DocLine] = []
   let n = toks.length()
@@ -345,7 +349,7 @@ pub fn parse_source(src : String) -> Array[TypeDef] {
       }
       Ident =>
         if depth == 0 && (t.text == "struct" || t.text == "enum") {
-          let (td, next) = parse_type_decl(src, toks, i, docs, line_start_off)
+          let (td, next) = parse_type_decl(text, toks, i, docs, line_start_off)
           out.push(td)
           i = next
         } else {

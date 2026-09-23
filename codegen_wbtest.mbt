@@ -288,3 +288,60 @@ test "with_notes：多条说明行连续排列，只在末尾留一个空行" {
     ),
   )
 }
+
+///|
+test "normalize_newlines：CRLF 与单独的 CR 都归一成 LF" {
+  @debug.debug_inspect(
+    normalize_newlines("a\r\nb\rc\nd\n"),
+    content=(
+      #|"a\nb\nc\nd\n"
+    ),
+  )
+}
+
+///|
+test "normalize_newlines：没有 CR 时原样返回（含空串）" {
+  @debug.debug_inspect(
+    normalize_newlines("") == "",
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    normalize_newlines("a\nb\n") == "a\nb\n",
+    content=(
+      #|true
+    ),
+  )
+}
+
+///|
+test "normalize_newlines：CRLF 源码与 LF 源码解析结果一致" {
+  // Windows 上 core.autocrlf=true 时检出的源码是 CRLF，但生成结果必须是 LF；
+  // 如果解析结果依赖换行风格，跨平台就会产出不同字节。
+  // 这里用普通字符串字面量（`\r` 会被解释成真正的回车），
+  // 不能用 `#|` 原始字符串 —— 原始字符串里的 `\r` 是两个普通字符。
+  let lf = "/// @derive(field_names)\nstruct A {\n  a : String\n}\n"
+  let crlf = "/// @derive(field_names)\r\nstruct A {\r\n  a : String\r\n}\r\n"
+  let a = parse_source(lf)
+  let b = parse_source(crlf)
+  @debug.debug_inspect(
+    a[0].fields[0].ty == b[0].fields[0].ty,
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    a[0].fields[0].ty,
+    content=(
+      #|"String"
+    ),
+  )
+  @debug.debug_inspect(
+    generate("a.mbt", lf, [dummy_rule()], "0.0.0-test").text ==
+    generate("a.mbt", crlf, [dummy_rule()], "0.0.0-test").text,
+    content=(
+      #|true
+    ),
+  )
+}

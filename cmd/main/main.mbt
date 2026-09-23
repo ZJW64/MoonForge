@@ -327,7 +327,12 @@ fn run_check(paths : Array[String]) -> Unit raise {
       let target = join_path(dir_of(f), @forge.generated_file_name(name))
       if out.has_output {
         if @fs.path_exists(target) {
-          let actual = @fs.read_file_to_string(target)
+          // 归一化换行符后再比：Windows 上 git 会把检出的文件换成 CRLF，
+          // 直接按字节比会把"只是换行符不同"误判成内容过期（详见
+          // `normalize_newlines` 的文档注释）。
+          let actual = @forge.normalize_newlines(
+            @fs.read_file_to_string(target),
+          )
           if actual != out.text {
             drift.push("内容过期：" + target)
           }
