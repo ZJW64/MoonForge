@@ -12,8 +12,11 @@
 #         moonfmt 不一致，格式化一次就会让 check 永久报漂移且 gen 修不好。
 #   5. CRLF 容忍：把生成物换成 CRLF（模拟 Windows 上 core.autocrlf=true 的
 #      检出结果）之后，check 依然必须通过
-#   6. 漂移闭环（在 _build 下的副本上做，不碰仓库里的任何文件）：
-#      改源码 → check 必须给退出码 1 → gen → check 必须回到 0
+#   6. 漂移闭环与退出码契约（在 _build 下的副本上做，不碰仓库里的任何文件）：
+#      改源码 → check 必须给退出码 1 → gen → check 必须回到 0；
+#      路径不存在 / 不是 .mbt / 目录里没有 .mbt，都必须给退出码 2。
+#      最后一个断言防的是"假绿"：路径写错却返回 0，CI 显示通过，其实一个
+#      文件都没检查。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -70,7 +73,7 @@ echo "OK: 生成物已含 CR（$plain_len 字节 vs 去 CR 后 $stripped_len 字
 echo "OK: CRLF 生成物没有被误判成漂移"
 
 echo
-echo "== 6/6 漂移闭环：改源码 → check=1 → gen → check=0"
+echo "== 6/6 漂移闭环与退出码契约"
 # 全程在 _build 下的副本上进行：即使中途失败也不会把仓库弄脏，
 # 因此不需要“备份 + 还原”这类容易在异常路径上失效的动作。
 probe="_build/e2e-probe"
@@ -93,6 +96,23 @@ echo "OK: 漂移被正确检出，check 退出码为 1"
 "$MOON" run cmd/main -- gen "$probe"
 "$MOON" run cmd/main -- check "$probe" >/dev/null
 echo "OK: gen 之后 check 回到 0（工作流闭环）"
+
+# 路径有误必须是退出码 2，而不是"安静地通过"
+expect_code2() {
+  set +e
+  "$MOON" run cmd/main -- "$@" >/dev/null 2>&1
+  local code=$?
+  set -e
+  if [ "$code" -ne 2 ]; then
+    echo "FAIL: '$*' 的退出码为 $code（约定应为 2）"
+    exit 1
+  fi
+}
+expect_code2 check "$probe/does-not-exist.mbt"
+expect_code2 check "$probe/probe_derive_gen.mbt"
+expect_code2 gen README.md
+expect_code2 explain "$probe"
+echo "OK: 路径不存在 / 非 .mbt / explain 传目录，退出码都是 2"
 
 echo
 echo "全部端到端校验通过。"

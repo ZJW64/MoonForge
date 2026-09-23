@@ -160,21 +160,38 @@ fn join_path(dir : String, name : String) -> String {
 
 ///|
 /// 把一个路径（文件或目录）展开成待处理的源文件列表。
+///
 /// 目录只扫描一层，避免误扫 `target/` 等构建产物；结果排序以保证输出稳定。
+///
+/// 路径有问题时**抛错**而不是返回空列表：`check` 是 CI 的判据，如果路径
+/// 写错了却安静地返回 0，CI 会显示绿色 —— 但一个文件都没检查。
+/// 这类"假绿"比报错难查得多。
 fn collect_sources(path : String) -> Array[String] raise {
+  if !@fs.path_exists(path) {
+    raise MoonForgeError(
+      "找不到路径：" +
+      path +
+      "\n    用法：moonforge <gen|check> <path...>，路径可以是 .mbt 文件或目录",
+    )
+  }
   let out : Array[String] = []
-  if @fs.path_exists(path) {
-    if @fs.is_dir(path) {
-      for name in @fs.read_dir(path) {
-        if @forge.is_source_file(name) {
-          out.push(join_path(path, name))
-        }
+  if @fs.is_dir(path) {
+    for name in @fs.read_dir(path) {
+      if @forge.is_source_file(name) {
+        out.push(join_path(path, name))
       }
-    } else if @forge.is_source_file(path) {
-      out.push(path)
     }
+  } else if @forge.is_source_file(path) {
+    out.push(path)
+  } else {
+    raise MoonForgeError(
+      path + " 不是 .mbt 源文件（本工具只处理 .mbt）",
+    )
   }
   out.sort()
+  if out.length() == 0 {
+    raise MoonForgeError(path + " 下没有找到 .mbt 源文件")
+  }
   out
 }
 
@@ -284,11 +301,8 @@ fn run_gen(paths : Array[String]) -> Unit raise {
   let mut written = 0
   let mut warned = 0
   for p in paths {
+    // 路径有问题时 collect_sources 会直接抛错（退出码 2），不再静默跳过
     let sources = collect_sources(p)
-    if sources.length() == 0 {
-      println("moonforge: " + p + " 下没有找到 .mbt 源文件")
-      continue
-    }
     for f in sources {
       scanned = scanned + 1
       let src = @fs.read_file_to_string(f)
@@ -318,11 +332,8 @@ fn run_check(paths : Array[String]) -> Unit raise {
   let drift : Array[String] = []
   let mut scanned = 0
   for p in paths {
+    // 路径有问题时 collect_sources 会直接抛错（退出码 2），不再静默跳过
     let sources = collect_sources(p)
-    if sources.length() == 0 {
-      println("moonforge: " + p + " 下没有找到 .mbt 源文件")
-      continue
-    }
     for f in sources {
       scanned = scanned + 1
       let src = @fs.read_file_to_string(f)
