@@ -55,3 +55,15 @@ pub(all) enum Status {
   Paid
   Shipped
 } derive(Eq, Debug)
+
+///|
+/// 位置参数（元组）结构体。
+///
+/// 这里刻意给它加上 `@derive(...)`：它在类型种类上仍是 struct，但字段没有名字，
+/// “按字段名展开”的规则对它没有意义。工具的取舍是**拒绝生成并说清原因**，
+/// 而不是生成一个 `field_names() { [] }` —— 后者语法上说得通、语义上完全错误，
+/// 而且编译器不会报错。`moon run cmd/main -- gen examples` 会为它打印三条
+/// `[warn]` 诊断，`explain` 里则显示为 `struct(位置参数)`。
+///
+/// @derive(field_names, validate, diff)
+pub(all) struct Point(Int, Int) derive(Eq, Debug)

@@ -78,6 +78,7 @@ test "Rule::apply 会转发到 gen，并把 None 原样返回" {
   let td : TypeDef = {
     name: "A",
     kind: TStruct,
+    body: Record,
     is_pub: false,
     fields: [],
     variants: [],

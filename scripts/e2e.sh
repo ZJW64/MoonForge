@@ -22,6 +22,14 @@ MOON="${MOON:-moon}"
 echo "== 1/6 漂移检查：已提交的生成物与源文件一致"
 "$MOON" run cmd/main -- check examples
 
+# 位置参数结构体 Point 没有具名字段，任何按字段名展开的规则都不该为它产出代码。
+# 修复前它会"借用"下一个声明的字段体，这里把它钉死。
+if grep -q "Point::" examples/models_derive_gen.mbt; then
+  echo "FAIL: 位置参数结构体 Point 不应该有任何生成方法"
+  exit 1
+fi
+echo "OK: 位置参数结构体没有产出任何生成方法"
+
 echo
 echo "== 2/6 运行测试"
 "$MOON" test --target js

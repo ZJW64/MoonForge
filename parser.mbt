@@ -159,13 +159,43 @@ fn attrs_of(lines : Array[String]) -> Array[Attr] {
 }
 
 ///|
-/// 清理字段类型原文：去首尾空白，并丢掉行尾的 `//` 注释。
+/// 把连续空白（空格 / 制表符 / 换行）折叠成单个空格。
+///
+/// 字段类型保留"源码原文"是有意为之，但原文里的**排版**不该进入 IR：
+/// 跨行书写的同一个类型（`Map[\n String,\n Int\n]`）与单行写法必须相等，
+/// 否则 `explain` 的输出会被换行切碎，规则里的类型比较也会对排版敏感。
+fn fold_ws(s : String) -> String {
+  let b = StringBuilder()
+  let n = s.length()
+  let mut i = 0
+  let mut pending_space = false
+  let mut wrote_any = false
+  while i < n {
+    let c = s.at(i)
+    if c == 32 || c == 9 || c == 10 || c == 13 {
+      pending_space = true
+    } else {
+      if pending_space && wrote_any {
+        b.write_string(" ")
+      }
+      pending_space = false
+      wrote_any = true
+      b.write_stringview(s[i:i + 1])
+    }
+    i = i + 1
+  }
+  b.to_string()
+}
+
+///|
+/// 清理字段类型原文：去首尾空白、丢掉行尾的 `//` 注释、折叠内部空白。
 fn clean_type_text(raw : String) -> String {
   let t = raw.trim().to_owned()
-  match t.find("//") {
+  let stripped = match t.find("//") {
     Some(i) => t[0:i].trim().to_owned()
     None => t
   }
+  fold_ws(stripped)
 }
 
 ///|
@@ -221,16 +251,35 @@ fn parse_type_decl(
   if tok_at(toks, j).kind == LBracket {
     j = skip_balanced(toks, j, LBracket, RBracket)
   }
-  while j < toks.length() {
-    let k = tok_at(toks, j).kind
-    if k == LBrace || k == Eof {
-      break
+  // 位置参数（元组）结构体：名字（或泛型参数表）之后直接跟 `(`。
+  // 这里**必须**在配对的 `)` 处停下，不能继续向后找 `{` —— 否则会一路扫到
+  // 下一个声明的花括号，把别人的字段当成自己的，同时静默丢掉中间那个声明。
+  // 这是修复前的真实行为：`struct Point(Int, Int)` 会产出 Point 的
+  // field_names 返回下一个结构体的字段名，且生成的 diff 引用了不存在的字段。
+  let mut body = if is_enum { Variants } else { Missing }
+  if !is_enum && tok_at(toks, j).kind == LParen {
+    j = skip_balanced(toks, j, LParen, RParen)
+    body = Positional
+  }
+  // 花括号字段体：只在“下一个非换行 token 就是 `{`”时采纳。
+  // 只跳过换行，是为了同时满足两件事：
+  //   - `struct Foo` 换行再写 `{` 的排版仍然被接受（moon fmt 不会这么排，
+  //     但人手写时会）；
+  //   - 没有字段体的声明（`struct Foo` 后面直接是别的声明）不会越过自己的
+  //     声明去“借用”下一个声明的花括号。
+  if body == Missing {
+    let mut k = j
+    while tok_at(toks, k).kind == Newline {
+      k = k + 1
     }
-    j = j + 1
+    if tok_at(toks, k).kind == LBrace {
+      j = k
+      body = Record
+    }
   }
   let fields : Array[FieldDef] = []
   let variants : Array[String] = []
-  if tok_at(toks, j).kind == LBrace {
+  if body == Record || body == Variants {
     j = j + 1
     while j < toks.length() {
       let t = tok_at(toks, j)
@@ -249,7 +298,19 @@ fn parse_type_decl(
         Ident =>
           if is_enum {
             variants.push(t.text)
-            j = j + 1
+            // 构造器参数（`A(Int, String)`）只是载荷类型，不是变体名。
+            // 跳过配对的括号，否则参数里的类型名会被当成变体 —— 修复前
+            // `enum Payload { A(Int) B(String, Int) }` 会输出
+            // ["A", "Int", "B", "String", "Int"]。
+            let mut k = j + 1
+            while tok_at(toks, k).kind == Newline {
+              k = k + 1
+            }
+            if tok_at(toks, k).kind == LParen {
+              j = skip_balanced(toks, k, LParen, RParen)
+            } else {
+              j = j + 1
+            }
           } else {
             let fname = t.text
             let fline = t.line
@@ -283,6 +344,17 @@ fn parse_type_decl(
                     }
                     k = k + 1
                   }
+                  // 深度 0 的逗号是字段之间的分隔符（含尾随逗号），
+                  // 不能算进类型原文：否则 `a : String,` 的类型会变成
+                  // "String,"，白名单判断随之失效、校验被静默跳过。
+                  // 括号里的逗号（元组类型、泛型实参）属于类型本身，要保留。
+                  Comma => {
+                    if d2 <= 0 {
+                      break
+                    }
+                    tend = tk.end
+                    k = k + 1
+                  }
                   RBrace | Eof => break
                   _ => {
                     tend = tk.end
@@ -307,7 +379,10 @@ fn parse_type_decl(
       }
     }
   }
-  ({ name, kind, is_pub, fields, variants, doc, attrs, line: kw.line, }, j)
+  (
+    { name, kind, body, is_pub, fields, variants, doc, attrs, line: kw.line, },
+    j,
+  )
 }
 
 ///|

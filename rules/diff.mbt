@@ -12,7 +12,7 @@ pub fn diff() -> @forge.Rule {
     name: "diff",
     description: "为 struct 生成 T::diff(self, other) -> Array[String]，返回发生变化的字段名（字段类型需实现 Eq）",
     gen: fn(td : @forge.TypeDef) -> String? {
-      if td.is_enum() {
+      if !td.has_named_fields() {
         return None
       }
       let b = StringBuilder()

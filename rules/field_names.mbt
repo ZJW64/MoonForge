@@ -9,7 +9,7 @@ pub fn field_names() -> @forge.Rule {
     name: "field_names",
     description: "为 struct 生成 T::field_names() -> Array[String]，顺序与字段声明一致",
     gen: fn(td : @forge.TypeDef) -> String? {
-      if td.is_enum() {
+      if !td.has_named_fields() {
         return None
       }
       let items : Array[String] = []

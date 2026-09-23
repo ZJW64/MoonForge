@@ -280,3 +280,70 @@ test "集成：完整源码 → 完整生成文件（金样）" {
     ),
   )
 }
+
+///|
+test "三条规则都对位置参数结构体返回 None（没有字段名可展开）" {
+  // `struct P(Int, Int)` 在 TypeKind 上仍是 TStruct。如果规则只用
+  // `is_enum()` 做前置判断，就会为它生成 `field_names() { [] }` ——
+  // 语法上说得通、语义上完全错误，而且编译器不会报错。
+  let positional =
+    #|/// @derive(field_names, validate, diff)
+    #|pub struct P(Int, Int)
+  for name in ["field_names", "validate", "diff"] {
+    @debug.debug_inspect(
+      apply_rule(name, positional) is None,
+      content=(
+        #|true
+      ),
+    )
+  }
+}
+
+///|
+test "三条规则都对没有字段体的声明返回 None" {
+  let bodyless =
+    #|/// @derive(field_names, validate, diff)
+    #|struct O
+  for name in ["field_names", "validate", "diff"] {
+    @debug.debug_inspect(
+      apply_rule(name, bodyless) is None,
+      content=(
+        #|true
+      ),
+    )
+  }
+}
+
+///|
+test "validate：尾随逗号不再让 @nonempty 被静默跳过" {
+  // 修复前字段类型会被切成 "String,"，白名单命中失败 → 校验被跳过并留下
+  // 一条"跳过"说明行。修复后类型是干净的 "String"，检查正常生成。
+  let src =
+    #|struct A {
+    #|  /// @nonempty
+    #|  a : String,
+    #|}
+  @debug.debug_inspect(
+    apply_rule("validate", src),
+    content=(
+      #|Some("///|\npub fn A::validate(self : A) -> Result[Unit, String] {\n  if self.a == \"\" {\n    return Err(\"A.a must not be empty\")\n  }\n  Ok(())\n}\n")
+    ),
+  )
+}
+
+///|
+test "validate：跨行书写的字段类型仍能命中数值白名单" {
+  // 类型原文里的换行会被折叠成空格。若折叠成 "Int " 之类的形状，
+  // 白名单命中就会失败 —— 这里把它固定下来。
+  let src =
+    #|struct A {
+    #|  /// @min(0)
+    #|  n : Int
+    #|}
+  @debug.debug_inspect(
+    apply_rule("validate", src),
+    content=(
+      #|Some("///|\npub fn A::validate(self : A) -> Result[Unit, String] {\n  if self.n < 0 {\n    return Err(\"A.n must be >= 0\")\n  }\n  Ok(())\n}\n")
+    ),
+  )
+}

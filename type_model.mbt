@@ -33,12 +33,33 @@ pub(all) enum TypeKind {
 } derive(Debug, Eq)
 
 ///|
+/// 声明的“字段体”形态 —— 决定这个类型有没有**具名字段**。
+///
+/// 分开描述是必要的：`struct Point(Int, Int)` 与 `struct Point { x : Int }`
+/// 在 `TypeKind` 上都算 `TStruct`，但前者没有字段名，`field_names` / `diff` /
+/// `validate` 这些按名字展开的规则对它完全没有意义。如果只看 `TypeKind`，
+/// 生成器就会对位置参数结构体生成出一个空字段列表 —— 语法上说得通、
+/// 语义上完全错误，而且编译器不会报错。
+pub(all) enum BodyKind {
+  /// `struct T { ... }`：有具名字段。三条内置规则只对这类类型生效。
+  Record
+  /// `struct T(T1, T2)`：位置参数（元组）结构体，没有字段名。
+  Positional
+  /// `enum T { ... }`：变体在 `variants` 里。
+  Variants
+  /// 名字之后既没有 `(` 也没有 `{`（源码不完整，或不是本项目认识的写法）。
+  Missing
+} derive(Debug, Eq)
+
+///|
 /// 一个顶层类型定义。
 pub(all) struct TypeDef {
   name : String
   kind : TypeKind
+  /// 字段体形态；只有 `Record` 才有具名字段。
+  body : BodyKind
   is_pub : Bool
-  /// 结构体字段；枚举时为空。
+  /// 具名字段；非 `Record` 时为空。
   fields : Array[FieldDef]
   /// 枚举构造器名；结构体时为空。
   variants : Array[String]
@@ -61,6 +82,35 @@ pub fn TypeDef::is_enum(self : TypeDef) -> Bool {
   match self.kind {
     TEnum => true
     TStruct => false
+  }
+}
+
+///|
+/// 该类型是否有具名字段 —— 也就是“按字段名展开”的规则能不能对它生效。
+///
+/// 所有内置规则都应该用它而不是 `is_enum()` 做前置判断：判断条件只有一处，
+/// 新增的字段体形态（例如将来的 `newtype`）不会被某条规则漏掉。
+pub fn TypeDef::has_named_fields(self : TypeDef) -> Bool {
+  match self.kind {
+    TStruct => self.body == Record
+    TEnum => false
+  }
+}
+
+///|
+/// 类型在 `explain` 里的展示标签。
+///
+/// 位置参数结构体与"没有字段体"的声明会带上括号补充说明：它们在 `explain`
+/// 输出里后面不会跟任何 `field` 行，不解释一下会显得像解析失败。
+pub fn TypeDef::body_label(self : TypeDef) -> String {
+  match self.kind {
+    TEnum => "enum"
+    TStruct =>
+      match self.body {
+        Positional => "struct(位置参数)"
+        Missing => "struct(无字段体)"
+        _ => "struct"
+      }
   }
 }
 

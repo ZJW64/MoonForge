@@ -341,3 +341,244 @@ test "解析：注解不会被误判（邮箱、正文里的 @）" {
     ),
   )
 }
+
+///|
+test "解析：位置参数结构体不再吞掉下一个声明的字段体" {
+  // 修复前：`struct Point(Int, Int)` 会让解析器一路向后找 `{`，结果把
+  // 后面 Holder 的字段当成 Point 的字段，同时 Holder 被静默丢弃 ——
+  // 生成出来的 Point::field_names 返回 Holder 的字段名，diff 还会引用
+  // 根本不存在的字段，直接编译不过。
+  let src =
+    #|/// @derive(field_names)
+    #|pub struct Point(Int, Int)
+    #|
+    #|/// @derive(field_names)
+    #|struct Holder {
+    #|  a : Int
+    #|  b : String
+    #|}
+  let tds = parse_source(src)
+  @debug.debug_inspect(
+    names(tds),
+    content=(
+      #|["Point", "Holder"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].body,
+    content=(
+      #|Positional
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].fields.length(),
+    content=(
+      #|0
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].has_named_fields(),
+    content=(
+      #|false
+    ),
+  )
+  @debug.debug_inspect(
+    field_names_of(tds, 1),
+    content=(
+      #|["a:Int", "b:String"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[1].has_named_fields(),
+    content=(
+      #|true
+    ),
+  )
+}
+
+///|
+test "解析：带泛型参数的位置参数结构体" {
+  let src =
+    #|/// @derive(field_names)
+    #|struct Pair[T](T, T)
+    #|
+    #|struct After { k : String }
+  let tds = parse_source(src)
+  @debug.debug_inspect(
+    names(tds),
+    content=(
+      #|["Pair", "After"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].body,
+    content=(
+      #|Positional
+    ),
+  )
+  @debug.debug_inspect(
+    field_names_of(tds, 1),
+    content=(
+      #|["k:String"]
+    ),
+  )
+}
+
+///|
+test "解析：没有字段体的声明不越界借用下一个声明的花括号" {
+  let src =
+    #|/// @derive(field_names)
+    #|struct Opaque
+    #|
+    #|struct Real {
+    #|  a : Int
+    #|}
+  let tds = parse_source(src)
+  @debug.debug_inspect(
+    names(tds),
+    content=(
+      #|["Opaque", "Real"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].body,
+    content=(
+      #|Missing
+    ),
+  )
+  @debug.debug_inspect(
+    field_names_of(tds, 1),
+    content=(
+      #|["a:Int"]
+    ),
+  )
+}
+
+///|
+test "解析：花括号写在下一行仍然被接受" {
+  let src =
+    #|/// @derive(field_names)
+    #|struct Brace
+    #|{
+    #|  k : String
+    #|}
+    #|
+    #|struct After { n : Int }
+  let tds = parse_source(src)
+  @debug.debug_inspect(
+    names(tds),
+    content=(
+      #|["Brace", "After"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].body,
+    content=(
+      #|Record
+    ),
+  )
+  @debug.debug_inspect(
+    field_names_of(tds, 0),
+    content=(
+      #|["k:String"]
+    ),
+  )
+}
+
+///|
+test "解析：尾随逗号不进类型原文（否则白名单判断会失效）" {
+  let src =
+    #|/// @derive(validate)
+    #|struct A {
+    #|  /// @nonempty
+    #|  a : String,
+    #|  /// @min(0)
+    #|  b : Int,
+    #|}
+  let tds = parse_source(src)
+  @debug.debug_inspect(
+    field_names_of(tds, 0),
+    content=(
+      #|["a:String", "b:Int"]
+    ),
+  )
+  // 类型原文干净了，白名单才能命中 —— 这条断言正是修复的动机
+  @debug.debug_inspect(
+    tds[0].fields[0].ty == "String" && tds[0].fields[1].ty == "Int",
+    content=(
+      #|true
+    ),
+  )
+}
+
+///|
+test "解析：元组/泛型里的逗号属于类型本身，要保留" {
+  let src =
+    #|struct A {
+    #|  t : (Int, String),
+    #|  m : Map[String, Int],
+    #|}
+  @debug.debug_inspect(
+    field_names_of(parse_source(src), 0),
+    content=(
+      #|["t:(Int, String)", "m:Map[String, Int]"]
+    ),
+  )
+}
+
+///|
+test "解析：跨行书写的字段类型折叠掉内部空白" {
+  let src =
+    #|struct A {
+    #|  m : Map[
+    #|    String,
+    #|    Int
+    #|  ]
+    #|  n : Int
+    #|}
+  let tds = parse_source(src)
+  // 跨行与单行必须是同一个类型字符串，否则规则里的类型比较会受排版影响
+  @debug.debug_inspect(
+    tds[0].fields[0].ty,
+    content=(
+      #|"Map[ String, Int ]"
+    ),
+  )
+  @debug.debug_inspect(
+    field_names_of(tds, 0),
+    content=(
+      #|["m:Map[ String, Int ]", "n:Int"]
+    ),
+  )
+}
+
+///|
+test "解析：带载荷的枚举只收集构造器名" {
+  // 修复前会把载荷里的类型名一并当成变体：
+  // ["A", "Int", "B", "String", "Int"]
+  let src =
+    #|pub enum Payload {
+    #|  A(Int)
+    #|  B(String, Int)
+    #|  C
+    #|}
+  let td = parse_source(src)[0]
+  @debug.debug_inspect(
+    td.variants,
+    content=(
+      #|["A", "B", "C"]
+    ),
+  )
+  @debug.debug_inspect(
+    td.is_enum(),
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    td.body,
+    content=(
+      #|Variants
+    ),
+  )
+}

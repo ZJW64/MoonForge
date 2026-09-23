@@ -192,8 +192,7 @@ fn cmd_list_rules() -> Unit {
 
 ///|
 fn print_type(td : @forge.TypeDef) -> Unit {
-  let kind = if td.is_enum() { "enum" } else { "struct" }
-  println("  " + kind + " " + td.name + "   (line \{td.line})")
+  println("  " + td.body_label() + " " + td.name + "   (line \{td.line})")
   if td.doc.length() > 0 {
     println("    doc: " + td.doc)
   }
@@ -209,7 +208,8 @@ fn print_type(td : @forge.TypeDef) -> Unit {
               println(
                 "      [--] " +
                 rn +
-                " 不适用于该类型（只支持 struct）",
+                " 不适用：" +
+                @forge.not_applicable_reason(td),
               )
           }
         None =>

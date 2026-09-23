@@ -10,7 +10,7 @@ fn dummy_rule() -> Rule {
     name: "dummy",
     description: "测试用规则",
     gen: fn(td : TypeDef) -> String? {
-      if td.is_enum() {
+      if !td.has_named_fields() {
         return None
       }
       Some("///|\npub fn " + td.name + "::dummy() -> Unit {\n  ()\n}\n")
@@ -340,6 +340,80 @@ test "normalize_newlines：CRLF 源码与 LF 源码解析结果一致" {
   @debug.debug_inspect(
     generate("a.mbt", lf, [dummy_rule()], "0.0.0-test").text ==
     generate("a.mbt", crlf, [dummy_rule()], "0.0.0-test").text,
+    content=(
+      #|true
+    ),
+  )
+}
+
+///|
+test "诊断：位置参数结构体给出具体的“不适用”原因" {
+  let src =
+    #|/// @derive(dummy)
+    #|struct P(Int, Int)
+  let out = generate("p.mbt", src, [dummy_rule()], "0.0.0-test")
+  @debug.debug_inspect(
+    out.has_output,
+    content=(
+      #|false
+    ),
+  )
+  @debug.debug_inspect(
+    out.diagnostics[0],
+    content=(
+      #|"规则 `dummy` 不适用于 P（第 2 行）：P 是位置参数（元组）结构体，没有具名字段"
+    ),
+  )
+}
+
+///|
+test "诊断：没有字段体的声明给出“找不到字段体”而不是误报成 enum" {
+  let src =
+    #|/// @derive(dummy)
+    #|struct O
+    #|
+    #|struct Real { a : Int }
+  let out = generate("o.mbt", src, [dummy_rule()], "0.0.0-test")
+  @debug.debug_inspect(
+    out.has_output,
+    content=(
+      #|false
+    ),
+  )
+  @debug.debug_inspect(
+    out.diagnostics[0],
+    content=(
+      #|"规则 `dummy` 不适用于 O（第 2 行）：O 的声明里没有找到字段体（既没有 `(` 也没有 `{`）"
+    ),
+  )
+}
+
+///|
+test "not_applicable_reason：三种原因各自可辨" {
+  let named = parse_source("struct A { x : Int }")[0]
+  let positional = parse_source("struct P(Int)")[0]
+  let missing = parse_source("struct M")[0]
+  let enumerated = parse_source("enum E { A }")[0]
+  @debug.debug_inspect(
+    not_applicable_reason(positional),
+    content=(
+      #|"P 是位置参数（元组）结构体，没有具名字段"
+    ),
+  )
+  @debug.debug_inspect(
+    not_applicable_reason(missing),
+    content=(
+      #|"M 的声明里没有找到字段体（既没有 `(` 也没有 `{`）"
+    ),
+  )
+  @debug.debug_inspect(
+    not_applicable_reason(enumerated),
+    content=(
+      #|"该规则只支持 struct 定义"
+    ),
+  )
+  @debug.debug_inspect(
+    named.has_named_fields() && !positional.has_named_fields(),
     content=(
       #|true
     ),

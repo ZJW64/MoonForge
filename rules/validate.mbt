@@ -131,7 +131,7 @@ pub fn validate() -> @forge.Rule {
     name: "validate",
     description: "为 struct 生成 T::validate(self) -> Result[Unit, String]，由字段注解 @nonempty/@min/@max/@positive 驱动",
     gen: fn(td : @forge.TypeDef) -> String? {
-      if td.is_enum() {
+      if !td.has_named_fields() {
         return None
       }
       let checks : Array[String] = []

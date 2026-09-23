@@ -107,6 +107,29 @@ fn gen_header(
 }
 
 ///|
+/// 规则返回 `None` 时，用**可验证的事实**解释"为什么不适用"。
+///
+/// 三种原因分开写，而不是笼统地回一句"不支持"：用户需要一眼看出到底是
+/// "规则选错了"还是"这个类型本来就没有具名字段"。后者是硬限制（位置参数
+/// 结构体没有名字可展开），不是工具没做好 —— 说清楚比含糊过去更重要。
+pub fn not_applicable_reason(td : TypeDef) -> String {
+  match td.kind {
+    TEnum => "该规则只支持 struct 定义"
+    TStruct =>
+      match td.body {
+        Positional =>
+          td.name + " 是位置参数（元组）结构体，没有具名字段"
+        Missing =>
+          td.name +
+          " 的声明里没有找到字段体（既没有 `(` 也没有 `{`）"
+        // Record 时规则不该返回 None；这里保留兜底文案，避免新增规则时
+        // 出现半句话的诊断。
+        _ => "该规则不适用于 " + td.name
+      }
+  }
+}
+
+///|
 /// 对一份源码执行全部请求的派生规则，返回可直接落盘的文本。
 ///
 /// 顺序约定：按类型在源码中出现的顺序、按 `@derive(...)` 里书写的规则顺序输出，
@@ -141,7 +164,8 @@ pub fn generate(
               diagnostics.push(
                 "规则 `" +
                 rn +
-                "` 不适用于 \{td.name}（第 \{td.line} 行）：该规则只支持 struct 定义",
+                "` 不适用于 \{td.name}（第 \{td.line} 行）：" +
+                not_applicable_reason(td),
               )
             Some(code) => {
               chunks.push(code)
