@@ -7,7 +7,14 @@ on:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # 两个平台都跑：项目主要在 Windows 上开发（CRLF、路径分隔符），
+    # 但生成物要能被任何机器复现，所以两个平台都必须通过。
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,22 +23,49 @@ jobs:
         with:
           node-version: "22"
 
-      - name: 安装 MoonBit 工具链
+      - name: 安装 MoonBit 工具链（Linux / macOS）
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
+      - name: 安装 MoonBit 工具链（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: 版本信息
         run: moon version
+
+      # 格式化检查排在编译之前：格式化差异与编译错误是两类问题，
+      # 先报出来更省事。注意 `moon fmt --check` 在"有差异"时给的是**非零**
+      # 退出码（本机实测为 127），CI 只需要它非零即可判定失败。
+      # 这条检查依赖工具链版本：本仓库的基线是 `moon 0.1.20260915`，
+      # 若未来 moonfmt 改了排版风格，这里会先红 —— 那是提醒跟进，不是误报。
+      - name: 格式化检查
+        shell: bash
+        run: moon fmt --check
 
       - name: 编译检查
         run: moon check
 
+      # 生成物是提交进仓库的，所以这两步才能成立：
+      # check 证明磁盘上的生成物与源文件一致，moon check 真实编译它。
       - name: 生成物漂移检查
         run: moon run cmd/main -- check examples
 
-      - name: 运行测试
+      - name: 运行测试（js）
         run: moon test --target js
 
-      - name: 端到端校验（含漂移负例）
+      # 换一个后端再跑一遍：生成代码不能只在默认后端成立
+      - name: 运行测试（wasm-gc）
+        run: moon test --target wasm-gc
+
+      # 端到端：格式化稳定性、CRLF 容忍、漂移闭环、退出码契约
+      - name: 端到端校验
+        shell: bash
         run: bash scripts/e2e.sh

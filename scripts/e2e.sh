@@ -7,7 +7,7 @@
 #   1. 漂移检查：仓库里已提交的生成物必须与当前源文件一致
 #   2. 测试：词法 / 语法 / 规则 / 金样 / 幂等 / 使用生成代码的端到端测试
 #   3. 编译检查：真实编译生成出来的代码（这一步才是“生成代码正确”的证据）
-#   4. 格式化稳定性：跑过 `moon fmt` 之后生成物依然无漂移
+#   4. 格式化：仓库本身是格式化的，且生成物的字节与 `moon fmt` 的结果一致
 #      —— 生成物是提交进仓库的，用户迟早会格式化；如果生成器的字节输出与
 #         moonfmt 不一致，格式化一次就会让 check 永久报漂移且 gen 修不好。
 #   5. CRLF 容忍：把生成物换成 CRLF（模拟 Windows 上 core.autocrlf=true 的
@@ -42,8 +42,16 @@ echo "== 3/6 编译检查（含自动生成的代码）"
 "$MOON" check
 
 echo
-echo "== 4/6 格式化稳定性：moon fmt 之后生成物仍与生成结果一致"
-"$MOON" fmt
+echo "== 4/6 格式化：仓库已格式化，且生成物在 moon fmt 下稳定"
+# 先确认仓库本身就是格式化的（`moon fmt --check` 有差异时退出码非零）。
+# 放在 `moon fmt` 之前，是为了避免"直接格式化把仓库改脏"。
+if ! "$MOON" fmt --check >/dev/null 2>&1; then
+  echo "FAIL: 仓库里有未格式化的文件，请运行 moon fmt 并提交"
+  exit 1
+fi
+echo "OK: 仓库已格式化"
+# 再确认生成物与格式化器自洽：生成器写出的字节必须已经是 moonfmt 的形状，
+# 否则用户跑一次 moon fmt 就会让 check 永久报漂移、且 gen 修不好。
 "$MOON" run cmd/main -- check examples
 
 echo
