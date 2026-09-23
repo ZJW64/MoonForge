@@ -5,7 +5,7 @@
 // 因此生成文件头里的 `source` 只写**文件名**而不是绝对路径，避免跨机器不一致。
 
 ///|
-pub const MOONFORGE_VERSION : String = "0.1.0"
+pub const MOONFORGE_VERSION : String = "0.2.0"
 
 ///|
 /// 把 CRLF / 单独的 CR 统一成 LF。
