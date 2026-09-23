@@ -213,11 +213,15 @@ fn print_type(td : @forge.TypeDef) -> Unit {
               )
           }
         None =>
-          println(
-            "      [!!] " +
-            rn +
-            " 未注册（用 `list-rules` 查看可用规则）",
-          )
+          match @forge.invalid_rule_name_reason(rn) {
+            Some(why) => println("      [!!] " + why)
+            None =>
+              println(
+                "      [!!] " +
+                rn +
+                " 未注册（用 `list-rules` 查看可用规则）",
+              )
+          }
       }
     }
   }

@@ -42,7 +42,6 @@ pub fn rule_names(rules : Array[Rule]) -> Array[String] {
 
 ///|
 /// 规则名是否合法：只允许小写字母、数字与下划线。
-/// 在解析注解时就做校验，可以让“写了不存在的规则名”在 `explain` 阶段就被发现。
 pub fn is_valid_rule_name(name : String) -> Bool {
   if name.length() == 0 {
     return false
@@ -59,4 +58,23 @@ pub fn is_valid_rule_name(name : String) -> Bool {
     i = i + 1
   }
   ok
+}
+
+///|
+/// 规则名为什么用不了；名字**合法**时返回 `None`。
+///
+/// 区分"名字不合法"与"名字合法但没注册"是有意义的：前者的修法是改拼写
+/// （`@derive(Field-Names)` → `field_names`），后者要么换个已注册的规则，
+/// 要么自己注册一条。笼统地回一句"未知规则"，用户会去翻注册表，而问题
+/// 其实在拼写上。
+pub fn invalid_rule_name_reason(name : String) -> String? {
+  if is_valid_rule_name(name) {
+    None
+  } else {
+    Some(
+      "规则名 `" +
+      name +
+      "` 不合法：只允许小写字母、数字与下划线（例如 field_names）",
+    )
+  }
 }

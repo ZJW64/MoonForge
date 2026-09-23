@@ -153,11 +153,18 @@ pub fn generate(
     for rn in wanted {
       match find_rule(rules, rn) {
         None =>
-          diagnostics.push(
-            "未知规则 `" +
-            rn +
-            "`（由 \{td.name} 在第 \{td.line} 行请求）；可用 `moonforge list-rules` 查看",
-          )
+          match invalid_rule_name_reason(rn) {
+            Some(why) =>
+              diagnostics.push(
+                why + "（由 \{td.name} 在第 \{td.line} 行请求）",
+              )
+            None =>
+              diagnostics.push(
+                "未知规则 `" +
+                rn +
+                "`（由 \{td.name} 在第 \{td.line} 行请求）；可用 `moonforge list-rules` 查看",
+              )
+          }
         Some(r) =>
           match r.apply(td) {
             None =>

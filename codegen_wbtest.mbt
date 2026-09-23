@@ -419,3 +419,59 @@ test "not_applicable_reason：三种原因各自可辨" {
     ),
   )
 }
+
+///|
+test "诊断：规则名不合法时指出拼写问题，而不是笼统地说“未知规则”" {
+  let src =
+    #|/// @derive(Field-Names)
+    #|struct A { x : Int }
+  let out = generate("a.mbt", src, [dummy_rule()], "0.0.0-test")
+  @debug.debug_inspect(
+    out.has_output,
+    content=(
+      #|false
+    ),
+  )
+  @debug.debug_inspect(
+    out.diagnostics[0],
+    content=(
+      #|"规则名 `Field-Names` 不合法：只允许小写字母、数字与下划线（例如 field_names）（由 A 在第 2 行请求）"
+    ),
+  )
+}
+
+///|
+test "诊断：名字合法但未注册时，仍然给出“未知规则”与 list-rules 指引" {
+  let src =
+    #|/// @derive(no_such_rule)
+    #|struct A { x : Int }
+  let out = generate("a.mbt", src, [dummy_rule()], "0.0.0-test")
+  @debug.debug_inspect(
+    out.diagnostics[0],
+    content=(
+      #|"未知规则 `no_such_rule`（由 A 在第 2 行请求）；可用 `moonforge list-rules` 查看"
+    ),
+  )
+}
+
+///|
+test "invalid_rule_name_reason：合法名字返回 None" {
+  @debug.debug_inspect(
+    invalid_rule_name_reason("field_names") is None,
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    invalid_rule_name_reason("FieldNames") is Some(_),
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    invalid_rule_name_reason("field-names") is Some(_),
+    content=(
+      #|true
+    ),
+  )
+}
