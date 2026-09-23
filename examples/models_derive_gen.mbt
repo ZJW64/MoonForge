@@ -45,6 +45,7 @@ pub fn Order::field_names() -> Array[String] {
 }
 
 // moonforge: 跳过 Order.quantity 的校验注解（类型 Int 不在 String / 内建数值类型白名单内）
+
 ///|
 pub fn Order::validate(self : Order) -> Result[Unit, String] {
   if self.id == "" {

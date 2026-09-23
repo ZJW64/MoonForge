@@ -154,20 +154,22 @@ pub fn validate() -> @forge.Rule {
         }
       }
       let b = StringBuilder()
-      // 说明行放在块头之前，让它明确地“前置”于它所解释的那个函数。
-      for n in notes {
-        b.write_string(n)
-      }
       b.write_string("///|\n")
       b.write_string(
-        "pub fn " + td.name + "::validate(self : " + td.name + ") -> Result[Unit, String] {\n",
+        "pub fn " +
+        td.name +
+        "::validate(self : " +
+        td.name +
+        ") -> Result[Unit, String] {\n",
       )
       for c in checks {
         b.write_string(c)
       }
       b.write_string("  Ok(())\n")
       b.write_string("}\n")
-      Some(b.to_string())
+      // 说明行放在块头之前，让它明确地“前置”于它所解释的那个函数；
+      // 与正文之间的空行由 `with_notes` 统一保证（见其文档注释）。
+      Some(@forge.with_notes(notes, b.to_string()))
     },
   }
 }

@@ -21,7 +21,35 @@ pub(all) struct GenOutcome {
 }
 
 ///|
-fn gen_header(source_name : String, used : Array[String], version : String) -> String {
+/// 把规则的“跳过说明行”与规则正文拼成一个代码片段。
+///
+/// 说明行是普通的 `// moonforge: ...` 注释，且与正文之间必须留一个空行 ——
+/// 这是 `moon fmt` 对“独立注释块 + 紧随其后的 `///|`”的要求。
+///
+/// 为什么这是硬约束而不是风格偏好：生成物是**提交进仓库**的，用户迟早会跑
+/// `moon fmt`。如果生成器产出的字节与 `moon fmt` 的结果不同，格式化一次之后
+/// `check` 就会永远报漂移，而且再跑 `gen` 也修不好 —— 用户被卡在一个没有出口的
+/// 循环里。所以“生成物在 `moon fmt` 下稳定”属于正确性问题，由 `e2e.sh` 与 CI
+/// 的“先 fmt 再 check”阶段守住。
+pub fn with_notes(notes : Array[String], body : String) -> String {
+  if notes.length() == 0 {
+    return body
+  }
+  let b = StringBuilder()
+  for n in notes {
+    b.write_string(n)
+  }
+  b.write_string("\n")
+  b.write_string(body)
+  b.to_string()
+}
+
+///|
+fn gen_header(
+  source_name : String,
+  used : Array[String],
+  version : String,
+) -> String {
   let sep = "// ---------------------------------------------------------------------------\n"
   let b = StringBuilder()
   b.write_string(sep)
@@ -89,7 +117,7 @@ pub fn generate(
     }
   }
   if chunks.length() == 0 {
-    return { text: "", applied, diagnostics, has_output: false }
+    return { text: "", applied, diagnostics, has_output: false, }
   }
   let buf = StringBuilder()
   buf.write_string(gen_header(source_name, used, version))
@@ -101,7 +129,7 @@ pub fn generate(
     buf.write_string(c)
     first = false
   }
-  { text: buf.to_string(), applied, diagnostics, has_output: true }
+  { text: buf.to_string(), applied, diagnostics, has_output: true, }
 }
 
 ///|
