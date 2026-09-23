@@ -299,6 +299,7 @@ fn run_gen(paths : Array[String]) -> Unit raise {
   let rules = @rules.all()
   let mut scanned = 0
   let mut written = 0
+  let mut removed = 0
   let mut warned = 0
   for p in paths {
     // 路径有问题时 collect_sources 会直接抛错（退出码 2），不再静默跳过
@@ -312,17 +313,27 @@ fn run_gen(paths : Array[String]) -> Unit raise {
         println("  [warn] " + name + ": " + d)
         warned = warned + 1
       }
+      let target = join_path(dir_of(f), @forge.generated_file_name(name))
       if out.has_output {
-        let target = join_path(dir_of(f), @forge.generated_file_name(name))
         @fs.write_string_to_file(target, out.text)
         println("  generated " + target + "  [" + out.applied.join(", ") + "]")
         written = written + 1
+      } else if @fs.path_exists(target) {
+        // 源文件里的 `@derive` 被删光之后，上一次生成的文件会留在盘上，
+        // `check` 会一直报"多余的生成文件"，而 `gen` 又修不好它 ——
+        // 用户被卡在一个"照提示做也没用"的循环里（和格式化稳定性同一类问题）。
+        // `gen` 的职责是让磁盘状态收敛到"与源文件一致"，所以这里删掉它。
+        @fs.remove_file(target)
+        println(
+          "  removed   " + target + "  [源文件里已没有 @derive 标记]",
+        )
+        removed = removed + 1
       }
     }
   }
   println("")
   println(
-    "moonforge: 扫描 \{scanned} 个源文件，生成 \{written} 个文件，警告 \{warned} 条",
+    "moonforge: 扫描 \{scanned} 个源文件，生成 \{written} 个，清理 \{removed} 个，警告 \{warned} 条",
   )
 }
 

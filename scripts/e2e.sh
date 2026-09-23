@@ -114,5 +114,31 @@ expect_code2 gen README.md
 expect_code2 explain "$probe"
 echo "OK: 路径不存在 / 非 .mbt / explain 传目录，退出码都是 2"
 
+# gen 必须把"源文件里已经没有 @derive"的残留生成物清理掉，
+# 否则 check 会一直报"多余的生成文件"，而照它的提示跑 gen 也修不好。
+stale="_build/e2e-stale"
+rm -rf "$stale"
+mkdir -p "$stale"
+cp examples/models.mbt "$stale/models.mbt"
+"$MOON" run cmd/main -- gen "$stale" >/dev/null
+test -f "$stale/models_derive_gen.mbt" || {
+  echo "FAIL: 前置条件不成立，没有生成出 models_derive_gen.mbt"
+  exit 1
+}
+cat > "$stale/models.mbt" <<'MOONFORGE_EOF'
+///|
+/// 一个不再需要派生代码的类型。
+struct Plain {
+  a : Int
+}
+MOONFORGE_EOF
+"$MOON" run cmd/main -- gen "$stale" >/dev/null
+if [ -f "$stale/models_derive_gen.mbt" ]; then
+  echo "FAIL: gen 没有清理残留的生成物"
+  exit 1
+fi
+"$MOON" run cmd/main -- check "$stale" >/dev/null
+echo "OK: 去掉 @derive 后 gen 会清理残留生成物，check 随之回到 0"
+
 echo
 echo "全部端到端校验通过。"
