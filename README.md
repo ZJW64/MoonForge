@@ -244,9 +244,10 @@ moon run cmd/main -- check src
 ├── *_wbtest.mbt                 # 白盒单元测试（每层各一个文件）
 ├── scripts/e2e.sh               # 本地一条命令复现 CI 的全部检查
 ├── CONTRIBUTING.md              # 贡献流程 / 提交信息规范
+├── 项目申报书.md                 # 赛事申报材料
 ├── .github/                     # CI 工作流 + Issue / PR 模板
 └── docs/                        # 一页项目说明 / 演示说明 / 项目方案（完善版）
-                                 #   + 扩展规则指南 / 验收自查清单
+                                 #   + 扩展规则指南 / 验收自查清单 / 英文项目描述
 ```
 
 ### 可扩展性
