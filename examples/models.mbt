@@ -52,7 +52,7 @@ pub(all) struct Order {
 /// 状态枚举。
 ///
 /// 没有 `@derive` 标记 → MoonForge 完全不碰它。
-/// 本期三条规则都只支持 struct；若给 enum 加上标记，会得到“不适用”诊断而不是报错。
+/// 本期四条规则都要求"有具名字段的 struct"；若给 enum 加上标记，会得到“不适用”诊断而不是报错。
 pub(all) enum Status {
   Pending
   Paid

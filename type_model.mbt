@@ -41,7 +41,7 @@ pub(all) enum TypeKind {
 /// 生成器就会对位置参数结构体生成出一个空字段列表 —— 语法上说得通、
 /// 语义上完全错误，而且编译器不会报错。
 pub(all) enum BodyKind {
-  /// `struct T { ... }`：有具名字段。三条内置规则只对这类类型生效。
+  /// `struct T { ... }`：有具名字段。四条内置规则只对这类类型生效。
   Record
   /// `struct T(T1, T2)`：位置参数（元组）结构体，没有字段名。
   Positional
