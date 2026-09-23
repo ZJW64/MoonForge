@@ -17,11 +17,20 @@ pub(all) struct DocLine {
 
 ///|
 /// 从文档缓冲区的尾部取“紧邻 decl_line 之前”的连续若干行，返回**正序**文本。
-fn take_docs(docs : Array[DocLine], decl_line : Int) -> Array[String] {
+///
+/// `min_line` 是归属的下界（含）：低于它的注释行不参与本轮取值。
+/// 这个下界是必要的 —— 单行写法 `struct A { x : Int }` 里字段与声明在同一行，
+/// 只看"紧邻声明行的上一行"会让**类型上的**注释落到第一个字段头上。
+/// 字段注解与类型注解混在一起，会生成用户根本没请求的校验代码。
+fn take_docs(
+  docs : Array[DocLine],
+  decl_line : Int,
+  min_line : Int,
+) -> Array[String] {
   let rev : Array[String] = []
   let mut want = decl_line - 1
   let mut i = docs.length() - 1
-  while i >= 0 && docs[i].line == want {
+  while i >= 0 && want >= min_line && docs[i].line == want {
     rev.push(docs[i].text)
     want = want - 1
     i = i - 1
@@ -238,7 +247,7 @@ fn parse_type_decl(
   let is_enum = kw.text == "enum"
   let line_prefix = src[line_start_off:kw.start].to_owned()
   let is_pub = line_prefix.trim_start().has_prefix("pub")
-  let own_docs = take_docs(docs, kw.line)
+  let own_docs = take_docs(docs, kw.line, 1)
   let doc = join_doc(own_docs)
   let attrs = attrs_of(own_docs)
   let kind = if is_enum { TEnum } else { TStruct }
@@ -279,6 +288,10 @@ fn parse_type_decl(
   }
   let fields : Array[FieldDef] = []
   let variants : Array[String] = []
+  // 字段注释的归属下界：body 开始行的下一行。见 `take_docs` 的文档注释 ——
+  // 这样单行结构体的字段就不会把类型上的注释当成自己的。
+  let body_line = tok_at(toks, j).line
+  let field_doc_min_line = body_line + 1
   if body == Record || body == Variants {
     j = j + 1
     while j < toks.length() {
@@ -362,7 +375,7 @@ fn parse_type_decl(
                   }
                 }
               }
-              let fdocs = take_docs(docs, fline)
+              let fdocs = take_docs(docs, fline, field_doc_min_line)
               fields.push({
                 name: fname,
                 ty: clean_type_text(src[tstart:tend].to_owned()),

@@ -582,3 +582,101 @@ test "解析：带载荷的枚举只收集构造器名" {
     ),
   )
 }
+
+///|
+test "解析：单行结构体的字段不继承类型上的注解" {
+  // 修复前字段与声明在同一行，`take_docs` 只看"紧邻声明行的上一行"，
+  // 于是类型上的 `@nonempty` / `@derive(...)` 会被复制到字段 `x` 上。
+  // 后果不只是 explain 输出变脏：把类型注解当成字段注解，会生成用户
+  // 根本没请求的校验代码。
+  let src =
+    #|/// @nonempty
+    #|/// @derive(validate)
+    #|struct A { x : String }
+  let td = parse_source(src)[0]
+  @debug.debug_inspect(
+    td.derive_rules(),
+    content=(
+      #|["validate"]
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].attrs.length(),
+    content=(
+      #|0
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].has_attr("nonempty"),
+    content=(
+      #|false
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].doc,
+    content=(
+      #|""
+    ),
+  )
+}
+
+///|
+test "解析：多行结构体的字段注解照常归属（修复没有误伤正常写法）" {
+  let src =
+    #|/// 类型注释
+    #|/// @derive(validate)
+    #|struct A {
+    #|  /// 字段注释
+    #|  /// @nonempty
+    #|  a : String
+    #|}
+  let td = parse_source(src)[0]
+  @debug.debug_inspect(
+    td.doc,
+    content=(
+      #|"类型注释"
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].doc,
+    content=(
+      #|"字段注释"
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].has_attr("nonempty"),
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].attrs.length(),
+    content=(
+      #|1
+    ),
+  )
+}
+
+///|
+test "解析：花括号写在下一行时，字段注解仍然归属正确" {
+  let src =
+    #|/// @derive(validate)
+    #|struct A
+    #|{
+    #|  /// @nonempty
+    #|  a : String
+    #|}
+  let td = parse_source(src)[0]
+  @debug.debug_inspect(
+    td.fields[0].has_attr("nonempty"),
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].attrs.length(),
+    content=(
+      #|1
+    ),
+  )
+}
