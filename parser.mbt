@@ -135,7 +135,7 @@ fn scan_attrs(line : String) -> Array[Attr] {
             args = split_args(line[arg_start:m].to_owned())
             k = m + 1
           }
-          out.push({ name, args })
+          out.push({ name, args, })
           i = k
           continue
         }
@@ -211,11 +211,7 @@ fn parse_type_decl(
   let own_docs = take_docs(docs, kw.line)
   let doc = join_doc(own_docs)
   let attrs = attrs_of(own_docs)
-  let kind = if is_enum {
-    TEnum
-  } else {
-    TStruct
-  }
+  let kind = if is_enum { TEnum } else { TStruct }
   let mut j = kw_index + 1
   while tok_at(toks, j).kind == Newline {
     j = j + 1
@@ -247,10 +243,10 @@ fn parse_type_decl(
         Newline | Comma | Bar => j = j + 1
         Doc => {
           // 结构体体内的注释也必须进缓冲，否则字段注解无从归属。
-          docs.push({ line: t.line, text: t.text })
+          docs.push({ line: t.line, text: t.text, })
           j = j + 1
         }
-        Ident => {
+        Ident =>
           if is_enum {
             variants.push(t.text)
             j = j + 1
@@ -307,24 +303,11 @@ fn parse_type_decl(
               j = j + 1
             }
           }
-        }
         _ => j = j + 1
       }
     }
   }
-  (
-    {
-      name,
-      kind,
-      is_pub,
-      fields,
-      variants,
-      doc,
-      attrs,
-      line: kw.line,
-    },
-    j,
-  )
+  ({ name, kind, is_pub, fields, variants, doc, attrs, line: kw.line, }, j)
 }
 
 ///|
@@ -343,7 +326,7 @@ pub fn parse_source(src : String) -> Array[TypeDef] {
       Doc => {
         // 空行（`///`、`///|`）也要入缓冲，否则行号连续性被打断，
         // 会导致注释归属判定提前终止。空文本在 `join_doc` 里会被丢掉。
-        docs.push({ line: t.line, text: t.text })
+        docs.push({ line: t.line, text: t.text, })
         i = i + 1
       }
       Newline => {
@@ -360,7 +343,7 @@ pub fn parse_source(src : String) -> Array[TypeDef] {
         }
         i = i + 1
       }
-      Ident => {
+      Ident =>
         if depth == 0 && (t.text == "struct" || t.text == "enum") {
           let (td, next) = parse_type_decl(src, toks, i, docs, line_start_off)
           out.push(td)
@@ -368,7 +351,6 @@ pub fn parse_source(src : String) -> Array[TypeDef] {
         } else {
           i = i + 1
         }
-      }
       Eof => break
       _ => i = i + 1
     }

@@ -14,11 +14,9 @@ pub(all) struct User {
   /// 姓名
   /// @nonempty
   name : String
-
   /// 年龄
   /// @min(0) @max(150)
   age : Int
-
   /// 电子邮箱 —— 没有校验注解，因此不会产生任何检查代码
   email : String
 } derive(Eq, Debug)
@@ -35,16 +33,13 @@ pub(all) struct Order {
   /// 订单号
   /// @nonempty
   id : String
-
   /// 金额（单位：分）
   /// @positive
   /// @max(10000000)
   amount_cents : Int
-
   /// 数量
   /// @nonempty
   quantity : Int
-
   /// 备注
   /// @nonempty
   note : String

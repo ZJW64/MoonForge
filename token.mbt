@@ -48,6 +48,6 @@ pub fn tok_at(toks : Array[Token], i : Int) -> Token {
   if i >= 0 && i < toks.length() {
     toks[i]
   } else {
-    { kind: Eof, text: "", start: 0, end: 0, line: 0 }
+    { kind: Eof, text: "", start: 0, end: 0, line: 0, }
   }
 }

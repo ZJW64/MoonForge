@@ -46,13 +46,25 @@ fn exit_with(_code : Int) -> Unit {
 ///|
 fn usage() -> String {
   let b = StringBuilder()
-  b.write_string("moonforge " + @forge.MOONFORGE_VERSION + " — MoonBit 派生代码生成器\n")
+  b.write_string(
+    "moonforge " +
+    @forge.MOONFORGE_VERSION +
+    " — MoonBit 派生代码生成器\n",
+  )
   b.write_string("\n")
   b.write_string("用法：\n")
-  b.write_string("  moonforge list-rules             列出已注册的派生规则\n")
-  b.write_string("  moonforge explain <file.mbt>     打印解析结果（类型 / 字段 / 注解 / 命中规则）\n")
-  b.write_string("  moonforge gen   <path...>        生成 *_derive_gen.mbt（path 可为文件或目录）\n")
-  b.write_string("  moonforge check <path...>        校验生成物是否有漂移（CI 用，有漂移则非零退出）\n")
+  b.write_string(
+    "  moonforge list-rules             列出已注册的派生规则\n",
+  )
+  b.write_string(
+    "  moonforge explain <file.mbt>     打印解析结果（类型 / 字段 / 注解 / 命中规则）\n",
+  )
+  b.write_string(
+    "  moonforge gen   <path...>        生成 *_derive_gen.mbt（path 可为文件或目录）\n",
+  )
+  b.write_string(
+    "  moonforge check <path...>        校验生成物是否有漂移（CI 用，有漂移则非零退出）\n",
+  )
   b.to_string()
 }
 
@@ -168,7 +180,9 @@ fn collect_sources(path : String) -> Array[String] raise {
 
 ///|
 fn cmd_list_rules() -> Unit {
-  println("已注册的派生规则（用法：在类型的 doc comment 里写 `@derive(<规则名>)`）：")
+  println(
+    "已注册的派生规则（用法：在类型的 doc comment 里写 `@derive(<规则名>)`）：",
+  )
   println("")
   for r in @rules.all() {
     println("  " + r.name)
@@ -178,11 +192,7 @@ fn cmd_list_rules() -> Unit {
 
 ///|
 fn print_type(td : @forge.TypeDef) -> Unit {
-  let kind = if td.is_enum() {
-    "enum"
-  } else {
-    "struct"
-  }
+  let kind = if td.is_enum() { "enum" } else { "struct" }
   println("  " + kind + " " + td.name + "   (line \{td.line})")
   if td.doc.length() > 0 {
     println("    doc: " + td.doc)
@@ -195,9 +205,19 @@ fn print_type(td : @forge.TypeDef) -> Unit {
         Some(r) =>
           match r.apply(td) {
             Some(_) => println("      [ok] " + rn + " 会生成代码")
-            None => println("      [--] " + rn + " 不适用于该类型（只支持 struct）")
+            None =>
+              println(
+                "      [--] " +
+                rn +
+                " 不适用于该类型（只支持 struct）",
+              )
           }
-        None => println("      [!!] " + rn + " 未注册（用 `list-rules` 查看可用规则）")
+        None =>
+          println(
+            "      [!!] " +
+            rn +
+            " 未注册（用 `list-rules` 查看可用规则）",
+          )
       }
     }
   }
@@ -224,12 +244,15 @@ fn cmd_explain(file : String) -> Unit raise {
   // 友好报错：把"用户传错参数"和"程序内部出错"区分开，避免直接抛运行期堆栈。
   if !@fs.path_exists(file) {
     raise MoonForgeError(
-      "找不到路径：" + file + "\n    用法：moonforge explain <file.mbt>，例如 moonforge explain examples/models.mbt",
+      "找不到路径：" +
+      file +
+      "\n    用法：moonforge explain <file.mbt>，例如 moonforge explain examples/models.mbt",
     )
   }
   if @fs.is_dir(file) {
     raise MoonForgeError(
-      file + " 是目录；explain 只接受单个 .mbt 文件，例如 moonforge explain examples/models.mbt",
+      file +
+      " 是目录；explain 只接受单个 .mbt 文件，例如 moonforge explain examples/models.mbt",
     )
   }
   if !@forge.is_source_file(file) {
@@ -280,7 +303,9 @@ fn run_gen(paths : Array[String]) -> Unit raise {
     }
   }
   println("")
-  println("moonforge: 扫描 \{scanned} 个源文件，生成 \{written} 个文件，警告 \{warned} 条")
+  println(
+    "moonforge: 扫描 \{scanned} 个源文件，生成 \{written} 个文件，警告 \{warned} 条",
+  )
 }
 
 ///|
@@ -310,7 +335,10 @@ fn run_check(paths : Array[String]) -> Unit raise {
           drift.push("缺少生成文件：" + target)
         }
       } else if @fs.path_exists(target) {
-        drift.push("多余的生成文件（源文件里已没有 @derive 标记）：" + target)
+        drift.push(
+          "多余的生成文件（源文件里已没有 @derive 标记）：" +
+          target,
+        )
       }
     }
   }
@@ -322,10 +350,14 @@ fn run_check(paths : Array[String]) -> Unit raise {
     println(
       "moonforge: 检测到 \{drift.length()} 处生成物漂移（已扫描 \{scanned} 个文件）。",
     )
-    println("请运行 `moon run cmd/main -- gen <dir>` 重新生成并提交。")
+    println(
+      "请运行 `moon run cmd/main -- gen <dir>` 重新生成并提交。",
+    )
     exit_with(1)
   }
-  println("moonforge: 已扫描 \{scanned} 个源文件，生成物与源文件一致，无漂移")
+  println(
+    "moonforge: 已扫描 \{scanned} 个源文件，生成物与源文件一致，无漂移",
+  )
 }
 
 ///|
@@ -342,19 +374,25 @@ fn run_main() -> Unit raise {
     println(usage())
   } else if cmd == "explain" {
     if args.length() < 2 {
-      raise MoonForgeError("explain 需要一个文件路径，例如：moonforge explain examples/models.mbt")
+      raise MoonForgeError(
+        "explain 需要一个文件路径，例如：moonforge explain examples/models.mbt",
+      )
     }
     cmd_explain(args[1])
   } else if cmd == "gen" {
     let paths = drop_first(args, 1)
     if paths.length() == 0 {
-      raise MoonForgeError("gen 需要至少一个路径，例如：moonforge gen examples")
+      raise MoonForgeError(
+        "gen 需要至少一个路径，例如：moonforge gen examples",
+      )
     }
     run_gen(paths)
   } else if cmd == "check" {
     let paths = drop_first(args, 1)
     if paths.length() == 0 {
-      raise MoonForgeError("check 需要至少一个路径，例如：moonforge check examples")
+      raise MoonForgeError(
+        "check 需要至少一个路径，例如：moonforge check examples",
+      )
     }
     run_check(paths)
   } else {
@@ -366,15 +404,15 @@ fn run_main() -> Unit raise {
 /// 统一兜底：把任何未捕获的错误转成一行人话提示 + 非零退出码，
 /// 而不是把 MoonBit 运行期堆栈直接喷给使用者（CI 日志里尤其重要）。
 fn main {
-  try {
-    run_main()
-  } catch {
+  run_main() catch {
     MoonForgeError(msg) => {
       println("moonforge: " + msg)
       exit_with(2)
     }
     _ => {
-      println("moonforge: 运行出错（路径不可读、无权限或参数有误）。")
+      println(
+        "moonforge: 运行出错（路径不可读、无权限或参数有误）。",
+      )
       println("用法：moon run cmd/main -- help")
       exit_with(2)
     }

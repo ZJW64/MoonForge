@@ -34,24 +34,42 @@ test "解析：pub(all) struct 的可见性与字段" {
     #|  age : Int
     #|}
   let tds = parse_source(src)
-  @debug.debug_inspect(names(tds), content=(
-    #|["User"]
-  ))
-  @debug.debug_inspect(tds[0].is_pub, content=(
-    #|true
-  ))
-  @debug.debug_inspect(tds[0].is_struct(), content=(
-    #|true
-  ))
-  @debug.debug_inspect(tds[0].doc, content=(
-    #|"用户"
-  ))
-  @debug.debug_inspect(tds[0].derive_rules(), content=(
-    #|["validate"]
-  ))
-  @debug.debug_inspect(field_names_of(tds, 0), content=(
-    #|["name:String", "age:Int"]
-  ))
+  @debug.debug_inspect(
+    names(tds),
+    content=(
+      #|["User"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].is_pub,
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].is_struct(),
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].doc,
+    content=(
+      #|"用户"
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].derive_rules(),
+    content=(
+      #|["validate"]
+    ),
+  )
+  @debug.debug_inspect(
+    field_names_of(tds, 0),
+    content=(
+      #|["name:String", "age:Int"]
+    ),
+  )
 }
 
 ///|
@@ -64,15 +82,18 @@ test "解析：字段类型按源码原文切片（泛型 / 可选 / 包名 / �
     #|  t : (Int, String)
     #|  f : (Int) -> String
     #|}
-  @debug.debug_inspect(field_names_of(parse_source(src), 0), content=(
-    #|[
-    #|  "m:Map[String, Array[Int]]",
-    #|  "o:Int?",
-    #|  "j:@json.Json",
-    #|  "t:(Int, String)",
-    #|  "f:(Int) -> String",
-    #|]
-  ))
+  @debug.debug_inspect(
+    field_names_of(parse_source(src), 0),
+    content=(
+      #|[
+      #|  "m:Map[String, Array[Int]]",
+      #|  "o:Int?",
+      #|  "j:@json.Json",
+      #|  "t:(Int, String)",
+      #|  "f:(Int) -> String",
+      #|]
+    ),
+  )
 }
 
 ///|
@@ -80,9 +101,12 @@ test "解析：@derive 保持书写顺序，决定输出顺序" {
   let src =
     #|/// @derive(zeta, alpha, beta)
     #|struct A { x : Int }
-  @debug.debug_inspect(parse_source(src)[0].derive_rules(), content=(
-    #|["zeta", "alpha", "beta"]
-  ))
+  @debug.debug_inspect(
+    parse_source(src)[0].derive_rules(),
+    content=(
+      #|["zeta", "alpha", "beta"]
+    ),
+  )
 }
 
 ///|
@@ -98,24 +122,42 @@ test "解析：字段注解（无参 + 有参 + 一行多个）" {
     #|  c : Int
     #|}
   let td = parse_source(src)[0]
-  @debug.debug_inspect(td.fields[0].has_attr("nonempty"), content=(
-    #|true
-  ))
-  @debug.debug_inspect(td.fields[1].attr_args("min"), content=(
-    #|["0"]
-  ))
-  @debug.debug_inspect(td.fields[1].attr_args("max"), content=(
-    #|["150"]
-  ))
-  @debug.debug_inspect(td.fields[1].attrs.length(), content=(
-    #|2
-  ))
-  @debug.debug_inspect(td.fields[2].attr_args("range"), content=(
-    #|["1", "2"]
-  ))
-  @debug.debug_inspect(td.fields[0].attrs.length(), content=(
-    #|1
-  ))
+  @debug.debug_inspect(
+    td.fields[0].has_attr("nonempty"),
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[1].attr_args("min"),
+    content=(
+      #|["0"]
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[1].attr_args("max"),
+    content=(
+      #|["150"]
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[1].attrs.length(),
+    content=(
+      #|2
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[2].attr_args("range"),
+    content=(
+      #|["1", "2"]
+    ),
+  )
+  @debug.debug_inspect(
+    td.fields[0].attrs.length(),
+    content=(
+      #|1
+    ),
+  )
 }
 
 ///|
@@ -125,12 +167,18 @@ test "解析：注释必须紧邻，空行会切断归属" {
     #|
     #|struct A { x : Int }
   let td = parse_source(src)[0]
-  @debug.debug_inspect(td.derive_rules().length(), content=(
-    #|0
-  ))
-  @debug.debug_inspect(td.doc, content=(
-    #|""
-  ))
+  @debug.debug_inspect(
+    td.derive_rules().length(),
+    content=(
+      #|0
+    ),
+  )
+  @debug.debug_inspect(
+    td.doc,
+    content=(
+      #|""
+    ),
+  )
 }
 
 ///|
@@ -152,12 +200,18 @@ test "解析：函数体、trait 体、test 块里的内容全部跳过" {
     #|/// @derive(field_names)
     #|struct After { a : Int }
   let tds = parse_source(src)
-  @debug.debug_inspect(names(tds), content=(
-    #|["After"]
-  ))
-  @debug.debug_inspect(tds[0].derive_rules(), content=(
-    #|["field_names"]
-  ))
+  @debug.debug_inspect(
+    names(tds),
+    content=(
+      #|["After"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].derive_rules(),
+    content=(
+      #|["field_names"]
+    ),
+  )
 }
 
 ///|
@@ -171,18 +225,30 @@ test "解析：枚举构造器与变体" {
     #|
     #|struct S { v : Int }
   let tds = parse_source(src)
-  @debug.debug_inspect(names(tds), content=(
-    #|["Color", "S"]
-  ))
-  @debug.debug_inspect(tds[0].is_enum(), content=(
-    #|true
-  ))
-  @debug.debug_inspect(tds[0].variants, content=(
-    #|["Red", "Green", "Blue"]
-  ))
-  @debug.debug_inspect(tds[1].is_enum(), content=(
-    #|false
-  ))
+  @debug.debug_inspect(
+    names(tds),
+    content=(
+      #|["Color", "S"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].is_enum(),
+    content=(
+      #|true
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].variants,
+    content=(
+      #|["Red", "Green", "Blue"]
+    ),
+  )
+  @debug.debug_inspect(
+    tds[1].is_enum(),
+    content=(
+      #|false
+    ),
+  )
 }
 
 ///|
@@ -193,15 +259,24 @@ test "解析：泛型声明与 derive(...) 后缀不影响结果" {
     #|  value : T
     #|} derive(Eq, Debug)
   let td = parse_source(src)[0]
-  @debug.debug_inspect(td.name, content=(
-    #|"Box"
-  ))
-  @debug.debug_inspect(td.derive_rules(), content=(
-    #|["field_names"]
-  ))
-  @debug.debug_inspect(field_names_of(parse_source(src), 0), content=(
-    #|["value:T"]
-  ))
+  @debug.debug_inspect(
+    td.name,
+    content=(
+      #|"Box"
+    ),
+  )
+  @debug.debug_inspect(
+    td.derive_rules(),
+    content=(
+      #|["field_names"]
+    ),
+  )
+  @debug.debug_inspect(
+    field_names_of(parse_source(src), 0),
+    content=(
+      #|["value:T"]
+    ),
+  )
 }
 
 ///|
@@ -210,22 +285,34 @@ test "解析：语法不完整时不崩溃，尽力给出已有信息" {
     #|struct Broken {
     #|  a : Int
   let tds = parse_source(src)
-  @debug.debug_inspect(tds.length(), content=(
-    #|1
-  ))
-  @debug.debug_inspect(tds[0].fields.length(), content=(
-    #|1
-  ))
+  @debug.debug_inspect(
+    tds.length(),
+    content=(
+      #|1
+    ),
+  )
+  @debug.debug_inspect(
+    tds[0].fields.length(),
+    content=(
+      #|1
+    ),
+  )
 }
 
 ///|
 test "解析：没有类型定义时返回空数组" {
-  @debug.debug_inspect(parse_source("fn main { println(\"hi\") }").length(), content=(
-    #|0
-  ))
-  @debug.debug_inspect(parse_source("").length(), content=(
-    #|0
-  ))
+  @debug.debug_inspect(
+    parse_source("fn main { println(\"hi\") }").length(),
+    content=(
+      #|0
+    ),
+  )
+  @debug.debug_inspect(
+    parse_source("").length(),
+    content=(
+      #|0
+    ),
+  )
 }
 
 ///|
@@ -235,13 +322,22 @@ test "解析：注解不会被误判（邮箱、正文里的 @）" {
     #|/// @derive(validate)
     #|struct A { x : Int }
   let td = parse_source(src)[0]
-  @debug.debug_inspect(td.attrs.length(), content=(
-    #|1
-  ))
-  @debug.debug_inspect(td.derive_rules(), content=(
-    #|["validate"]
-  ))
-  @debug.debug_inspect(td.doc, content=(
-    #|"联系 a@b.com 获取帮助"
-  ))
+  @debug.debug_inspect(
+    td.attrs.length(),
+    content=(
+      #|1
+    ),
+  )
+  @debug.debug_inspect(
+    td.derive_rules(),
+    content=(
+      #|["validate"]
+    ),
+  )
+  @debug.debug_inspect(
+    td.doc,
+    content=(
+      #|"联系 a@b.com 获取帮助"
+    ),
+  )
 }

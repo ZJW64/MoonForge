@@ -18,7 +18,9 @@ pub fn field_names() -> @forge.Rule {
       }
       let b = StringBuilder()
       b.write_string("///|\n")
-      b.write_string("pub fn " + td.name + "::field_names() -> Array[String] {\n")
+      b.write_string(
+        "pub fn " + td.name + "::field_names() -> Array[String] {\n",
+      )
       b.write_string("  [" + items.join(", ") + "]\n")
       b.write_string("}\n")
       Some(b.to_string())

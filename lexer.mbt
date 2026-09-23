@@ -43,7 +43,7 @@ pub fn tokenize(src : String) -> Array[Token] {
     let c = src.at(i)
     // 换行
     if c == 10 || c == 13 {
-      toks.push({ kind: Newline, text: "\n", start: i, end: i + 1, line })
+      toks.push({ kind: Newline, text: "\n", start: i, end: i + 1, line, })
       i = i + 1
       if c == 13 && i < n && src.at(i) == 10 {
         i = i + 1
@@ -58,7 +58,11 @@ pub fn tokenize(src : String) -> Array[Token] {
       continue
     }
     // doc comment：仅在行首（前面只有空白）才认定为文档注释
-    if line_blank && c == 47 && i + 2 < n && src.at(i + 1) == 47 && src.at(i + 2) == 47 {
+    if line_blank &&
+      c == 47 &&
+      i + 2 < n &&
+      src.at(i + 1) == 47 &&
+      src.at(i + 2) == 47 {
       let s = i + 3
       let mut e = s
       while e < n && src.at(e) != 10 && src.at(e) != 13 {
@@ -112,7 +116,7 @@ pub fn tokenize(src : String) -> Array[Token] {
         }
         e = e + 1
       }
-      toks.push({ kind: Other, text: "\"\"", start: i, end: e, line })
+      toks.push({ kind: Other, text: "\"\"", start: i, end: e, line, })
       i = e
       line_blank = false
       continue
@@ -129,7 +133,7 @@ pub fn tokenize(src : String) -> Array[Token] {
       if e < n && src.at(e) == 39 {
         e = e + 1
       }
-      toks.push({ kind: Other, text: "''", start: i, end: e, line })
+      toks.push({ kind: Other, text: "''", start: i, end: e, line, })
       i = e
       line_blank = false
       continue
@@ -189,6 +193,6 @@ pub fn tokenize(src : String) -> Array[Token] {
     i = i + 1
     line_blank = false
   }
-  toks.push({ kind: Eof, text: "", start: n, end: n, line })
+  toks.push({ kind: Eof, text: "", start: n, end: n, line, })
   toks
 }
