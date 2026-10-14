@@ -1,5 +1,9 @@
 // L2 单元测试：语法分析（子集）。
 //
+// 注意：doc comment 里的 `@derive(...)` 自 0.3 起**不再是派生入口**，
+// 但仍会被解析出来，用于给老用户输出迁移提示。相关断言调用的是
+// `legacy_derive_rules()`；新的入口是 `parse(src).impls`（见文件末尾的用例）。
+//
 // 边界集中在四类：
 //   1. 类型原文的切片是否精确（泛型、可选、带包名前缀）；
 //   2. 注释归属是否严格“紧邻”；
@@ -59,7 +63,7 @@ test "解析：pub(all) struct 的可见性与字段" {
     ),
   )
   @debug.debug_inspect(
-    tds[0].derive_rules(),
+    tds[0].legacy_derive_rules(),
     content=(
       #|["validate"]
     ),
@@ -97,12 +101,12 @@ test "解析：字段类型按源码原文切片（泛型 / 可选 / 包名 / �
 }
 
 ///|
-test "解析：@derive 保持书写顺序，决定输出顺序" {
+test "解析：老写法的 @derive 仍被识别（只用于迁移诊断，不参与生成）" {
   let src =
     #|/// @derive(zeta, alpha, beta)
     #|struct A { x : Int }
   @debug.debug_inspect(
-    parse_source(src)[0].derive_rules(),
+    parse_source(src)[0].legacy_derive_rules(),
     content=(
       #|["zeta", "alpha", "beta"]
     ),
@@ -168,7 +172,7 @@ test "解析：注释必须紧邻，空行会切断归属" {
     #|struct A { x : Int }
   let td = parse_source(src)[0]
   @debug.debug_inspect(
-    td.derive_rules().length(),
+    td.legacy_derive_rules().length(),
     content=(
       #|0
     ),
@@ -207,7 +211,7 @@ test "解析：函数体、trait 体、test 块里的内容全部跳过" {
     ),
   )
   @debug.debug_inspect(
-    tds[0].derive_rules(),
+    tds[0].legacy_derive_rules(),
     content=(
       #|["field_names"]
     ),
@@ -266,7 +270,7 @@ test "解析：泛型声明与 derive(...) 后缀不影响结果" {
     ),
   )
   @debug.debug_inspect(
-    td.derive_rules(),
+    td.legacy_derive_rules(),
     content=(
       #|["field_names"]
     ),
@@ -329,7 +333,7 @@ test "解析：注解不会被误判（邮箱、正文里的 @）" {
     ),
   )
   @debug.debug_inspect(
-    td.derive_rules(),
+    td.legacy_derive_rules(),
     content=(
       #|["validate"]
     ),
@@ -595,7 +599,7 @@ test "解析：单行结构体的字段不继承类型上的注解" {
     #|struct A { x : String }
   let td = parse_source(src)[0]
   @debug.debug_inspect(
-    td.derive_rules(),
+    td.legacy_derive_rules(),
     content=(
       #|["validate"]
     ),
@@ -679,4 +683,149 @@ test "解析：花括号写在下一行时，字段注解仍然归属正确" {
       #|1
     ),
   )
+}
+
+// ---------------------------------------------------------------------------
+// 0.3 新入口：`impl <标记 trait> for <类型>` 的解析
+// ---------------------------------------------------------------------------
+
+///|
+/// 把一条派生请求压成 "prefix|marker|target" 便于断言。
+fn impl_shape(impls : Array[ImplDecl], i : Int) -> String {
+  impls[i].prefix + "|" + impls[i].marker + "|" + impls[i].target
+}
+
+///|
+test "入口解析：带包前缀的标记 impl" {
+  let src =
+    #|pub impl @derive.DeriveFieldNames for User with fn requested(_self) {}
+  let p = parse(src)
+  @debug.debug_inspect(p.types.length(), content="0")
+  @debug.debug_inspect(p.impls.length(), content="1")
+  @debug.debug_inspect(
+    impl_shape(p.impls, 0),
+    content="\"@derive|DeriveFieldNames|User\"",
+  )
+}
+
+///|
+test "入口解析：同包 trait（没有 @ 前缀）" {
+  let p = parse("impl DeriveFieldNames for User with fn requested(_self) {}")
+  @debug.debug_inspect(p.impls.length(), content="1")
+  @debug.debug_inspect(
+    impl_shape(p.impls, 0),
+    content="\"|DeriveFieldNames|User\"",
+  )
+}
+
+///|
+test "入口解析：多级包路径只把最后一段当标记名" {
+  let p = parse("impl @a.b.DeriveX for T with fn requested(_self) {}")
+  @debug.debug_inspect(impl_shape(p.impls, 0), content="\"@a.b|DeriveX|T\"")
+}
+
+///|
+test "入口解析：泛型目标类型只取类型名" {
+  let src =
+    #|pub impl @derive.DeriveFieldNames for Box[T] with fn requested(_self) {}
+  let p = parse(src)
+  @debug.debug_inspect(
+    impl_shape(p.impls, 0),
+    content="\"@derive|DeriveFieldNames|Box\"",
+  )
+}
+
+///|
+test "入口解析：固有 impl（impl Foo with ...）不是派生请求" {
+  let src =
+    #|pub struct User {
+    #|  id : Int
+    #|}
+    #|
+    #|pub impl User with fn id_of(self) -> Int {
+    #|  self.id
+    #|}
+  let p = parse(src)
+  @debug.debug_inspect(p.types.length(), content="1")
+  @debug.debug_inspect(p.impls.length(), content="0")
+}
+
+///|
+test "入口解析：impl 体内的花括号与同名关键字不会污染扫描" {
+  // 花括号深度守卫必须覆盖 impl 体：里面的 `{` `}` 不能让解析器
+  // 在错误的位置认 `struct`，也不能让后面的声明被吞掉。
+  let src =
+    #|pub impl @derive.DeriveFieldNames for User with fn requested(_self) {
+    #|  let s = { "a": 1 }
+    #|  struct Fake { y : Int }
+    #|}
+    #|
+    #|struct Later {
+    #|  x : Int
+    #|}
+  let p = parse(src)
+  @debug.debug_inspect(p.impls.length(), content="1")
+  @debug.debug_inspect(names(p.types), content="[\"Later\"]")
+}
+
+///|
+test "入口解析：多条 impl 保持书写顺序，类型与 impl 可混排" {
+  let src =
+    #|///|
+    #|pub struct User {
+    #|  id : Int
+    #|}
+    #|
+    #|///|
+    #|pub impl @derive.DeriveValidate for User with fn requested(_self) {}
+    #|
+    #|///|
+    #|pub impl @derive.DeriveDiff for User with fn requested(_self) {}
+    #|
+    #|///|
+    #|pub struct Order {
+    #|  id : String
+    #|}
+    #|
+    #|///|
+    #|pub impl @derive.DeriveFieldNames for Order with fn requested(_self) {}
+  let p = parse(src)
+  @debug.debug_inspect(names(p.types), content="[\"User\", \"Order\"]")
+  @debug.debug_inspect(p.impls.length(), content="3")
+  @debug.debug_inspect(
+    [impl_shape(p.impls, 0), impl_shape(p.impls, 1), impl_shape(p.impls, 2)],
+    content=(
+      #|[
+      #|  "@derive|DeriveValidate|User",
+      #|  "@derive|DeriveDiff|User",
+      #|  "@derive|DeriveFieldNames|Order",
+      #|]
+    ),
+  )
+}
+
+///|
+test "入口解析：只有 impl 没有类型时，类型数组为空而请求仍被记录" {
+  let p = parse(
+    "impl @derive.DeriveFieldNames for Ghost with fn requested(_self) {}",
+  )
+  @debug.debug_inspect(p.types.length(), content="0")
+  @debug.debug_inspect(
+    impl_shape(p.impls, 0),
+    content="\"@derive|DeriveFieldNames|Ghost\"",
+  )
+}
+
+///|
+test "入口解析：行号被记录（诊断要指到具体那一行）" {
+  let src =
+    #|///|
+    #|pub struct User {
+    #|  id : Int
+    #|}
+    #|
+    #|///|
+    #|pub impl @derive.DeriveFieldNames for User with fn requested(_self) {}
+  let p = parse(src)
+  @debug.debug_inspect(p.impls[0].line, content="7")
 }

@@ -50,7 +50,11 @@ if ! "$MOON" fmt --check >/dev/null 2>&1; then
   exit 1
 fi
 echo "OK: 仓库已格式化"
-# 再确认生成物与格式化器自洽：生成器写出的字节必须已经是 moonfmt 的形状，
+# 再确认列宽预算还站得住：impl 头一旦超过 moonfmt 的折行阈值，生成物的字节
+# 输出就与格式化结果不一致，下面这条 check 必然红。先把这个前提量掉，
+# 免得以后换工具链时，"漂移"被误读成生成器的 bug。
+bash scripts/fmt_budget_probe.sh
+# 最后确认生成物与格式化器自洽：生成器写出的字节必须已经是 moonfmt 的形状，
 # 否则用户跑一次 moon fmt 就会让 check 永久报漂移、且 gen 修不好。
 "$MOON" run cmd/main -- check examples
 
@@ -89,7 +93,7 @@ rm -rf "$probe"
 mkdir -p "$probe"
 cp examples/models.mbt "$probe/probe.mbt"
 
-printf '\n///\n/// @derive(field_names)\nstruct DriftProbe {\n  k : String\n}\n' >> "$probe/probe.mbt"
+printf '\n///|\npub struct DriftProbe {\n  k : String\n}\n\n///|\npub impl @derive.DeriveFieldNames for DriftProbe with fn requested(_self) {}\n' >> "$probe/probe.mbt"
 
 set +e
 "$MOON" run cmd/main -- check "$probe" >/dev/null 2>&1
@@ -122,7 +126,7 @@ expect_code2 gen README.md
 expect_code2 explain "$probe"
 echo "OK: 路径不存在 / 非 .mbt / explain 传目录，退出码都是 2"
 
-# gen 必须把"源文件里已经没有 @derive"的残留生成物清理掉，
+# gen 必须把"源文件里已经没有派生标记"的残留生成物清理掉，
 # 否则 check 会一直报"多余的生成文件"，而照它的提示跑 gen 也修不好。
 stale="_build/e2e-stale"
 rm -rf "$stale"
@@ -146,7 +150,7 @@ if [ -f "$stale/models_derive_gen.mbt" ]; then
   exit 1
 fi
 "$MOON" run cmd/main -- check "$stale" >/dev/null
-echo "OK: 去掉 @derive 后 gen 会清理残留生成物，check 随之回到 0"
+echo "OK: 去掉派生标记后 gen 会清理残留生成物，check 随之回到 0"
 
 echo
 echo "全部端到端校验通过。"

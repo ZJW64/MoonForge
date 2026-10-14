@@ -1,4 +1,13 @@
+// 示例包：说明「用户侧」需要什么配置。
+//
+// 只需要一件事：把派生标记与目标 trait 所在的包 `moonforge/derive` 引进来。
+// 别名本身随你（`@derive` / `@d` / 别的），因为 moonforge 生成 impl 时会
+// **复用你写标记时用的那个前缀**，不会假设你把它叫 `@derive`。
 warnings = "-79"
+
+import {
+  "moonforge/derive",
+}
 
 import {
   "moonbitlang/core/debug",

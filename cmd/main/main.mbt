@@ -65,6 +65,13 @@ fn usage() -> String {
   b.write_string(
     "  moonforge check <path...>        校验生成物是否有漂移（CI 用，有漂移则非零退出）\n",
   )
+  b.write_string("\n")
+  b.write_string(
+    "派生入口（写进类型所在文件，不是注释）：\n",
+  )
+  b.write_string(
+    "  pub impl @derive.DeriveFieldNames for User with fn requested(_self) {}\n",
+  )
   b.to_string()
 }
 
@@ -198,12 +205,22 @@ fn collect_sources(path : String) -> Array[String] raise {
 ///|
 fn cmd_list_rules() -> Unit {
   println(
-    "已注册的派生规则（用法：在类型的 doc comment 里写 `@derive(<规则名>)`）：",
+    "已注册的派生规则。派生入口是在类型所在文件里写一行真实 trait impl：",
+  )
+  println("")
+  println(
+    "    pub impl @derive.DeriveXxx for <类型> with fn requested(_self) {}",
   )
   println("")
   for r in @rules.all() {
-    println("  " + r.name)
-    println("      " + r.description)
+    println("  " + @forge.key_of(r))
+    println(
+      "      标记 " +
+      @forge.marker_of(r) +
+      "  →  生成 impl " +
+      @forge.trait_name_of(r),
+    )
+    println("      " + @forge.description_of(r))
   }
 }
 
@@ -212,35 +229,6 @@ fn print_type(td : @forge.TypeDef) -> Unit {
   println("  " + td.body_label() + " " + td.name + "   (line \{td.line})")
   if td.doc.length() > 0 {
     println("    doc: " + td.doc)
-  }
-  let rules = td.derive_rules()
-  if rules.length() > 0 {
-    println("    @derive(" + rules.join(", ") + ")")
-    for rn in rules {
-      match @forge.find_rule(@rules.all(), rn) {
-        Some(r) =>
-          match r.apply(td) {
-            Some(_) => println("      [ok] " + rn + " 会生成代码")
-            None =>
-              println(
-                "      [--] " +
-                rn +
-                " 不适用：" +
-                @forge.not_applicable_reason(td),
-              )
-          }
-        None =>
-          match @forge.invalid_rule_name_reason(rn) {
-            Some(why) => println("      [!!] " + why)
-            None =>
-              println(
-                "      [!!] " +
-                rn +
-                " 未注册（用 `list-rules` 查看可用规则）",
-              )
-          }
-      }
-    }
   }
   if td.is_enum() {
     for v in td.variants {
@@ -258,6 +246,71 @@ fn print_type(td : @forge.TypeDef) -> Unit {
       println("    field " + f.name + " : " + f.ty + attrs_text)
     }
   }
+  // 老写法不再产生代码，必须显式提示，否则用户只会看到"生成物消失"。
+  let legacy = td.legacy_derive_rules()
+  if legacy.length() > 0 {
+    println(
+      "    [!!] doc comment 里的 @derive(" +
+      legacy.join(", ") +
+      ") 已废弃、不再生成代码；请改用 impl <标记 trait> for " +
+      td.name,
+    )
+  }
+}
+
+///|
+/// 一条派生请求的展示：用户写的标记 → 命中的规则 → 会不会真的生成代码。
+fn print_request(
+  d : @forge.ImplDecl,
+  td : @forge.TypeDef,
+  rules : Array[&@forge.DeriveRule],
+) -> Unit {
+  let sep = if d.prefix.length() > 0 { "." } else { "" }
+  println(
+    "    impl " +
+    d.prefix +
+    sep +
+    d.marker +
+    " for " +
+    d.target +
+    "   (line \{d.line})",
+  )
+  match @forge.find_rule_by_marker(rules, d.marker) {
+    Some(r) =>
+      match r.generate(td) {
+        Some(_) =>
+          println(
+            "      [ok] 规则 " +
+            @forge.key_of(r) +
+            " → 生成 impl " +
+            @forge.trait_name_of(r),
+          )
+        None =>
+          println(
+            "      [--] 规则 " +
+            @forge.key_of(r) +
+            " 不适用：" +
+            @forge.not_applicable_reason(td),
+          )
+      }
+    None =>
+      println(
+        "      [!!] 标记 trait `" +
+        d.marker +
+        "` 未注册（用 `list-rules` 查看可用标记）",
+      )
+  }
+}
+
+///|
+fn has_type(types : Array[@forge.TypeDef], name : String) -> Bool {
+  let mut found = false
+  for t in types {
+    if t.name == name {
+      found = true
+    }
+  }
+  found
 }
 
 ///|
@@ -280,18 +333,42 @@ fn cmd_explain(file : String) -> Unit raise {
     raise MoonForgeError(file + " 不是 .mbt 源文件")
   }
   let src = @fs.read_file_to_string(file)
-  let types = @forge.parse_source(src)
+  let parsed = @forge.parse(src)
+  let rules = @rules.all()
   println("moonforge explain: " + file)
   println("")
-  if types.length() == 0 {
-    println("  （未发现顶层 struct / enum 定义）")
+  if parsed.types.length() == 0 && parsed.impls.length() == 0 {
+    println(
+      "  （未发现顶层 struct / enum 定义，也没有派生标记）",
+    )
     return
   }
-  for td in types {
+  for td in parsed.types {
     print_type(td)
+    for d in parsed.impls {
+      if d.target == td.name {
+        print_request(d, td, rules)
+      }
+    }
+  }
+  // 指向本文件之外类型的标记：不报错，但要说清楚它为什么不会生效。
+  for d in parsed.impls {
+    if !has_type(parsed.types, d.target) {
+      println(
+        "  [!!] impl " +
+        d.marker +
+        " for " +
+        d.target +
+        "   (line \{d.line})：本文件里没有名为 " +
+        d.target +
+        " 的 struct / enum",
+      )
+    }
   }
   println("")
-  println("共 \{types.length()} 个类型定义。")
+  println(
+    "共 \{parsed.types.length()} 个类型定义，\{parsed.impls.length()} 条派生请求。",
+  )
 }
 
 ///|

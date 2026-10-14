@@ -1,0 +1,16 @@
+// 第三方扩展示例包。
+//
+// 它只依赖 moonforge 的**公开 API**（`@forge.generate` / `@forge.DeriveRule`）
+// 与内置规则的默认集合（`@rules.all()`），不触碰任何内部实现。
+// 这正是"第三方能不能扩展"的可执行证据：这个包里出现的每一个 moonforge 符号，
+// 都是外部使用者能拿到的符号。
+warnings = "-79"
+
+import {
+  "moonforge" @forge,
+  "moonforge/rules",
+}
+
+import {
+  "moonbitlang/core/debug",
+} for "wbtest"

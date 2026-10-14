@@ -1,4 +1,4 @@
-// 规则 validate：生成 `T::validate(self) -> Result[Unit, String]`。
+// 规则 validate：为类型生成 `impl Validate`。
 //
 // 这条规则体现派生工具的核心价值：**同一条规则，对不同类型生成不同代码**。
 // 差异来自字段上的注解（@nonempty / @min / @max / @positive），
@@ -126,50 +126,53 @@ fn has_value_attr(f : @forge.FieldDef) -> Bool {
 }
 
 ///|
-pub fn validate() -> @forge.Rule {
+/// 规则类型。
+pub struct ValidateRule {}
+
+///|
+pub impl @forge.DeriveRule for ValidateRule with fn head(_self) -> @forge.RuleHead {
   {
-    name: "validate",
-    description: "为 struct 生成 T::validate(self) -> Result[Unit, String]，由字段注解 @nonempty/@min/@max/@positive 驱动",
-    gen: fn(td : @forge.TypeDef) -> String? {
-      if !td.has_named_fields() {
-        return None
-      }
-      let checks : Array[String] = []
-      let notes : Array[String] = []
-      for f in td.fields {
-        let got = field_checks(td, f)
-        for c in got {
-          checks.push(c)
-        }
-        if got.length() == 0 && has_value_attr(f) {
-          notes.push(
-            "// moonforge: 跳过 " +
-            td.name +
-            "." +
-            f.name +
-            " 的校验注解（类型 " +
-            f.ty +
-            " 不在 String / 内建数值类型白名单内）\n",
-          )
-        }
-      }
-      let b = StringBuilder()
-      b.write_string("///|\n")
-      b.write_string(
-        "pub fn " +
-        td.name +
-        "::validate(self : " +
-        td.name +
-        ") -> Result[Unit, String] {\n",
-      )
-      for c in checks {
-        b.write_string(c)
-      }
-      b.write_string("  Ok(())\n")
-      b.write_string("}\n")
-      // 说明行放在块头之前，让它明确地“前置”于它所解释的那个函数；
-      // 与正文之间的空行由 `with_notes` 统一保证（见其文档注释）。
-      Some(@forge.with_notes(notes, b.to_string()))
-    },
+    key: "validate",
+    marker: "DeriveValidate",
+    trait_name: "Validate",
+    description: "为 struct 实现 Validate::validate，由字段注解 @nonempty/@min/@max/@positive 驱动",
   }
+}
+
+///|
+pub impl @forge.DeriveRule for ValidateRule with fn generate(_self, td) -> @forge.Fragment? {
+  if !td.has_named_fields() {
+    return None
+  }
+  let checks : Array[String] = []
+  let notes : Array[String] = []
+  for f in td.fields {
+    let got = field_checks(td, f)
+    for c in got {
+      checks.push(c)
+    }
+    if got.length() == 0 && has_value_attr(f) {
+      notes.push(
+        "// moonforge: 跳过 " +
+        td.name +
+        "." +
+        f.name +
+        " 的校验注解（类型 " +
+        f.ty +
+        " 不在 String / 内建数值类型白名单内）\n",
+      )
+    }
+  }
+  let b = StringBuilder()
+  // 只写方法名与参数：返回类型由 trait 声明（`derive/derive.mbt`）唯一决定。
+  // 理由见 `rule.mbt` 的 `Fragment::impl_body`：把返回类型抄进 impl 头会让
+  // `pub impl @derive.Validate for <类型名> with fn validate(self) -> Result[Unit, String] {`
+  // 这一行超过 `moon fmt` 的列宽预算，格式化一次就永久报漂移。
+  b.write_string("fn validate(self) {\n")
+  for c in checks {
+    b.write_string(c)
+  }
+  b.write_string("  Ok(())\n")
+  b.write_string("}\n")
+  Some({ notes, impl_body: b.to_string(), })
 }

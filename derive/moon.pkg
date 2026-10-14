@@ -1,0 +1,2 @@
+// 派生目标 trait 与标记 trait 的声明包。见 derive.mbt 顶部的设计说明。
+warnings = "-79"

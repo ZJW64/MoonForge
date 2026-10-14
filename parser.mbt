@@ -1,10 +1,16 @@
-// 语法分析：从 token 流里挑出顶层 `struct` / `enum` 定义，转成类型模型。
+// 语法分析：从 token 流里挑出两层信息，转成类型模型与派生请求。
 //
 // 策略（“跳过而非解析”）：
-// - 只在**花括号深度为 0** 的位置认 `struct` / `enum` 关键字，
-//   因此函数体、`impl` 块、`test` 块里的同名标识不会被误判；
+// - 只在**花括号深度为 0** 的位置认 `struct` / `enum` / `impl` 关键字，
+//   因此函数体、`test` 块里的同名标识不会被误判；
 // - 字段类型不做语义解析，直接取源码原文切片；
-// - 注解全部来自 doc comment，不引入任何语言层面的新语法。
+// - **派生请求来自真实的 `impl <标记 trait> for <类型>` 声明**（不是注释约定）。
+//
+// 关于派生入口：`impl @derive.DeriveFieldNames for User with fn requested(_self) {}`
+// 是一行合法的 MoonBit 代码 —— 拼错 trait 名会在编译期直接报错。本文件只负责
+// 把「哪个类型请求了哪个标记 trait」抽出来，至于这个标记对应哪条规则、
+// 该生成什么代码，属于规则层的事（见 rule.mbt / codegen.mbt），
+// 因此新增规则**不需要**改动词法或语法代码。
 
 ///|
 /// 一行文档注释（带行号）。行号用于判断注释是否**紧邻**声明：
@@ -14,6 +20,121 @@ pub(all) struct DocLine {
   line : Int
   text : String
 } derive(Debug, Eq)
+
+///|
+/// 一条派生请求：源码里的 `impl <标记 trait> for <类型>` 声明。
+///
+/// `prefix` 是书写时用的包前缀（`@derive` / `@d` / 空串），生成物会**原样复用**
+/// 它来引用目标 trait —— 这样用户把包起什么别名都行，不需要迁就工具。
+pub(all) struct ImplDecl {
+  /// 书写时的包前缀，含 `@`，例如 `@derive`；同包 trait 时为空串。
+  prefix : String
+  /// 标记 trait 名，已剥掉包前缀，例如 `DeriveFieldNames`。
+  marker : String
+  /// 被标记的类型名，例如 `User`。
+  target : String
+  line : Int
+} derive(Debug, Eq)
+
+///|
+/// 一份源码的解析结果。
+pub(all) struct ParseResult {
+  /// 顶层类型定义，按源码顺序。
+  types : Array[TypeDef]
+  /// 顶层 `impl ... for ...` 声明，按源码顺序。
+  impls : Array[ImplDecl]
+}
+
+///|
+/// 取字符串里最后一个 `.` 的下标（没有则 -1）。
+///
+/// 词法层把 `.` 并入标识符，所以 `@derive.FieldNames` 里的
+/// `derive.FieldNames` 是**一个** Ident；要拆出包前缀与 trait 名就在这里拆。
+fn last_dot(s : String) -> Int {
+  let mut idx = -1
+  let mut i = s.length() - 1
+  while i >= 0 {
+    if s.at(i) == 46 {
+      idx = i
+      break
+    }
+    i = i - 1
+  }
+  idx
+}
+
+///|
+/// 解析一条顶层 `impl` 声明的**头部**。
+///
+/// 只认 `<标记路径> for <类型>` 这一种形状；`impl Foo with fn ...`（固有 impl）
+/// 以及任何认不出的写法都返回 `None` 并把下标原样交回，由调用方继续扫描。
+/// 函数体一律不解析 —— 花括号由全局深度计数负责跳过。
+fn parse_impl_decl(toks : Array[Token], i : Int) -> (ImplDecl?, Int) {
+  let mut j = i + 1
+  while tok_at(toks, j).kind == Newline {
+    j = j + 1
+  }
+  // 包前缀：`@pkg.Trait` 里的 `@` 是独立 token，后面的 `pkg.Trait` 是一个 Ident。
+  let mut has_at = false
+  let at = tok_at(toks, j)
+  if at.kind == Other && at.text == "@" {
+    has_at = true
+    j = j + 1
+  }
+  let t = tok_at(toks, j)
+  if t.kind != Ident {
+    return (None, i + 1)
+  }
+  let full = t.text
+  let d = last_dot(full)
+  let seg = if d >= 0 { full[d + 1:].to_owned() } else { full }
+  let pkg = if d >= 0 { full[0:d].to_owned() } else { "" }
+  let prefix = if has_at {
+    if pkg.length() > 0 {
+      "@" + pkg
+    } else {
+      "@"
+    }
+  } else {
+    pkg
+  }
+  j = j + 1
+  // 泛型实参：`impl Trait[T] for ...`
+  if tok_at(toks, j).kind == Newline {
+    while tok_at(toks, j).kind == Newline {
+      j = j + 1
+    }
+  }
+  if tok_at(toks, j).kind == LBracket {
+    j = skip_balanced(toks, j, LBracket, RBracket)
+    while tok_at(toks, j).kind == Newline {
+      j = j + 1
+    }
+  }
+  let f = tok_at(toks, j)
+  if !(f.kind == Ident && f.text == "for") {
+    // 固有 impl（`impl Foo with ...`）或别的写法：不是派生请求。
+    return (None, i + 1)
+  }
+  j = j + 1
+  while tok_at(toks, j).kind == Newline {
+    j = j + 1
+  }
+  let ty = tok_at(toks, j)
+  if ty.kind != Ident {
+    return (None, i + 1)
+  }
+  let td = last_dot(ty.text)
+  let target = if td >= 0 { ty.text[td + 1:].to_owned() } else { ty.text }
+  j = j + 1
+  while tok_at(toks, j).kind == Newline {
+    j = j + 1
+  }
+  if tok_at(toks, j).kind == LBracket {
+    j = skip_balanced(toks, j, LBracket, RBracket)
+  }
+  (Some({ prefix, marker: seg, target, line: t.line, }), j)
+}
 
 ///|
 /// 从文档缓冲区的尾部取“紧邻 decl_line 之前”的连续若干行，返回**正序**文本。
@@ -399,14 +520,15 @@ fn parse_type_decl(
 }
 
 ///|
-/// 解析一份 MoonBit 源码，返回其中所有顶层类型定义（保持源码顺序）。
+/// 解析一份 MoonBit 源码，返回顶层类型定义与派生请求（均保持源码顺序）。
 ///
 /// 入口处先把 CRLF/CR 归一成 LF：后续所有偏移量（token 的 start/end、字段
 /// 类型原文的切片）都建立在这份归一化文本上，必须与词法用同一份字符串。
-pub fn parse_source(src : String) -> Array[TypeDef] {
+pub fn parse(src : String) -> ParseResult {
   let text = normalize_newlines(src)
   let toks = tokenize(text)
-  let out : Array[TypeDef] = []
+  let types : Array[TypeDef] = []
+  let impls : Array[ImplDecl] = []
   let docs : Array[DocLine] = []
   let n = toks.length()
   let mut i = 0
@@ -438,7 +560,14 @@ pub fn parse_source(src : String) -> Array[TypeDef] {
       Ident =>
         if depth == 0 && (t.text == "struct" || t.text == "enum") {
           let (td, next) = parse_type_decl(text, toks, i, docs, line_start_off)
-          out.push(td)
+          types.push(td)
+          i = next
+        } else if depth == 0 && t.text == "impl" {
+          let (decl, next) = parse_impl_decl(toks, i)
+          match decl {
+            Some(d) => impls.push(d)
+            None => ()
+          }
           i = next
         } else {
           i = i + 1
@@ -447,5 +576,11 @@ pub fn parse_source(src : String) -> Array[TypeDef] {
       _ => i = i + 1
     }
   }
-  out
+  { types, impls, }
+}
+
+///|
+/// 只要类型定义的便捷入口（`explain` 等只关心类型结构时使用）。
+pub fn parse_source(src : String) -> Array[TypeDef] {
+  parse(src).types
 }

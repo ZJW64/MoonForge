@@ -9,10 +9,81 @@
 > （`moonforge check` 返回 1），跑一次 `moonforge gen` 即可 —— 这是设计
 > 如此，不是故障。
 
-## [未发布]
+## [0.3.0] - 2026-09-23
+
+本轮的主题是**把派生入口从"工具私有的 doc comment"改成语言级的 trait impl**，
+并让规则集合真正成为可替换、可扩展的基础设施。三处动机：
+
+1. `/// @derive(...)` 是一条**只有 MoonForge 认识**的私有约定 —— 不参与类型检查、
+   拼错不报错、换个工具就失效。派生入口应该是**语言层面的事实**。
+2. 规则只有四条、且扩展要靠"改注册表数组"，生态价值弱。规则本身应该是
+   **一个 SPI trait**，规则集合应该是**异构的 trait 对象数组**。
+3. 派生的目标（`field_names` / `validate` / …）应该是**用户可实现的普通 trait**，
+   而不是工具内部的一个字符串名字。
+
+> **破坏性变更（必读）**：`/// @derive(...)` 写法**不再产出任何代码**。
+> 老写法仍会被识别，并给出一条**可粘贴的**迁移提示。生成物形状也变了
+> （见下），因此升级后必须跑一次 `moonforge gen`。
+
+### 变更（破坏性）
+
+- **派生入口改为真实的 trait impl。** 现在在类型所在文件里写一行：
+
+  ```moonbit
+  pub impl @derive.DeriveValidate for User with fn requested(_self) {}
+  ```
+
+  生成物变成 `pub impl @derive.Validate for User with fn validate(self) { ... }`。
+
+  为什么是 `impl` 而不是 `derive(...)`：编译器的 `derive(...)` **只认内置 trait 白名单**，
+  对自定义 trait 直接报 `Don't know how to derive trait X`（E4077），所以它**不能**作为
+  扩展入口；而普通 `impl` 没有这个限制，且能被 `moon check` 真正编译 ——
+  于是"拼错标记名"这类错误在编译期就暴露，不必等工具来猜。
+
+  `_self` 那个空方法不是装饰：MoonBit 语法**不允许** `impl T for X {}` 这样的空块
+  （报 `Invalid grouped impl declarations`），标记 trait 必须带至少一个方法。
+
+- **生成的 impl 头不再写返回类型。** 由 trait 声明唯一决定，实现只提供方法体。
+  这不是风格偏好，是为了与 `moon fmt` 逐字节一致的硬约束（见"修复"第一条）。
+
+### 新增
+
+- **`moonforge/derive` 包**：4 个派生目标 trait（`FieldNames` / `Validate` / `Diff` /
+  `ToPairs`）与 4 个标记 trait（`DeriveFieldNames` / `DeriveValidate` / `DeriveDiff` /
+  `DeriveToPairs`）。目标 trait 是**用户可以自己实现、也可以自己定义同类 trait** 的
+  普通 trait；标记 trait 是"这个类型请求了这次派生"的语言级声明。
+- **规则 SPI 改为 trait**：`pub(open) trait DeriveRule { fn head(Self) -> RuleHead;
+  fn generate(Self, TypeDef) -> Fragment? }`，注册表是
+  `Array[&@forge.DeriveRule]` —— 异构规则对象放进同一个数组里统一遍历。
+  第三方可以**只依赖 `moonforge` 包、不改它的源码**，把自己的规则并进集合。
+- **`examples/extension/`：可运行的第三方扩展样例。** 它自带 `ToCsv` / `DeriveToCsv`
+  trait、一个 `ToCsvRule`，把内置规则与自己的规则合成新集合后直接生成，全程没碰
+  moonforge 源码；`tocsv_wbtest.mbt` 用 5 条测试把它钉住（含"只用自己的规则集时，
+  内置规则完全不出场"）。
+- **三条新的可操作诊断**：
+  - 标记名不存在 → 列出已注册标记，并在"把**规则键**误写成标记名"时直接点破；
+  - 老写法 `/// @derive(...)` → 给出**可粘贴**的新 `impl` 代码；
+  - impl 头超列宽预算 → 说明会被 `moon fmt` 折开、给出三条出路。
+- **锚定解析能力**：识别 `impl <前缀>.<标记> for <类型>`，支持包前缀 / 多级包路径 /
+  无前缀同包 trait / 泛型目标（`for Box[T]` → `Box`），并**排除固有 impl**
+  （`impl Foo with ...`）；impl 体内的花括号与同名关键字不会污染后续扫描。
+- **`scripts/fmt_budget_probe.sh`**：用真实 `moonfmt` 现场实测生成物的列宽预算
+  （构造预算两侧的 impl 头，断言预算内保持、超预算折开），并接进 `e2e.sh` 第 4 阶段。
+  预算值不是猜的，量不到预期就非零退出。
+- **`MOONFORGE_VERSION` 与生成物的一致性**：生成物头的 `entry` 行写明**当前**入口写法，
+  打开生成文件的人不必回翻文档。
 
 ### 修复
 
+- **生成物与 `moon fmt` 不一致（本轮新发现）。** 生成的 impl 头形如
+  `pub impl @derive.Validate for User with fn validate(self) -> Result[Unit, String] {`，
+  **83～85 列**；而 `moonfmt` 对 82 列及以下的行保持原样、**83 列起**会把返回类型或
+  参数表折开。于是生成物与格式化结果不一致 → 用户跑一次 `moon fmt`，`check` 就永久
+  报漂移，而且 `gen` 也治不好（它照旧写单行版）。
+  → 生成 impl 时**不写返回类型**（由 trait 声明决定），impl 头降到 58～61 列，
+  留出约 20 列余量；同时新增列宽守卫，真的超预算时在生成阶段给出可操作的诊断。
+  实测边界由 `scripts/fmt_budget_probe.sh` 钉住。仓库里的
+  `examples/models_derive_gen.mbt` 现在与 `moonfmt` 的输出**逐字节相同**。
 - **CI 在装完工具链后没有刷新包索引，导致 ubuntu 与 windows 两个平台同时变红。**
   官方安装脚本只下载工具链与 core，**不会**创建或更新 `~/.moon/registry`；而
   `cmd/main` 依赖 `moonbitlang/x`（用它的 `fs`），索引缺失时 `moon check` 在
@@ -33,6 +104,31 @@
 - 安装工具链的步骤补上 `set -euo pipefail`。`curl ... | bash` 的退出码取的是
   `bash` 的，下载被截断时 bash 读到 EOF 会返回 0 —— 步骤显示成功，工具链却是
   残缺的，报错会出现在毫不相关的地方。
+
+### 兼容性（升级指南）
+
+- **老写法不再产出代码。** `/// @derive(validate, diff)` 会被识别并给出一条迁移提示，
+  内含可直接粘贴的新 `impl`。不做静默忽略，是因为"生成物莫名消失"比报错更难查。
+- **生成物形状变化 + 版本号变化 → 必然触发一次漂移。** 升级后跑一次
+  `moon run cmd/main -- gen <dir>` 即可，`check` 随之回到 0。这是设计如此。
+- **公开 API 变化**（以库依赖方式使用时需注意）：
+  - 移除 `Rule` 结构体（`name` / `description` / `gen`）→ 改为 `pub(open) trait DeriveRule`，
+    配套 `RuleHead`（`key` / `marker` / `trait_name` / `description`）与 `Fragment`
+    （`notes` / `impl_body`）；
+  - `TypeDef::derive_rules` → `legacy_derive_rules`（只用于老写法迁移诊断）；
+  - 新增 `ImplDecl` / `ParseResult` / `parse()` / `impl_head_line()` /
+    `first_line()` / `FMT_WIDTH_BUDGET` 等公开 API；
+  - `parse_source()` 保留，仍是"只要类型定义"的便捷入口。
+- `moon.pkg` 需要新增一行对派生 trait 所在包的引用
+  （`import { "moonforge/derive" @derive, }`），别名随意 —— 生成的 impl 会**复用你写
+  标记时的前缀**，不会假设你把它叫 `@derive`。
+
+### 测试
+
+- 用例数 96 → 119。新增覆盖：入口解析 10 条、规则 SPI 与 trait 对象遍历 3 条、
+  诊断 3 条（含列宽预算）、第三方扩展 5 条、生成物金样随形状更新。
+- `bash scripts/e2e.sh` 6 个阶段全部通过；两个后端
+  （`moon test --target js` / `--target wasm-gc`）119/119。
 
 ## [0.2.0] - 2026-09-23
 
@@ -130,6 +226,6 @@
   已提交的生成物，以及直接调用生成代码的端到端测试。
 - GitHub Actions CI、`scripts/e2e.sh`、`docs/` 三份说明。
 
-[未发布]: https://github.com/ZJW64/MoonForge/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/ZJW64/MoonForge/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ZJW64/MoonForge/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ZJW64/MoonForge/releases/tag/v0.1.0

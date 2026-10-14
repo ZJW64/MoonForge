@@ -115,8 +115,13 @@ pub fn TypeDef::body_label(self : TypeDef) -> String {
 }
 
 ///|
-/// 取该类型声明的派生规则名，按**书写顺序**返回（顺序决定输出顺序，保持字节稳定）。
-pub fn TypeDef::derive_rules(self : TypeDef) -> Array[String] {
+/// 取该类型 doc comment 里遗留的 `@derive(...)` 参数。
+///
+/// **这不是派生入口**（入口是 `impl <标记 trait> for <类型>`，见 parser.mbt）。
+/// 保留它只为一件事：老版本用户升级后，注释里的 `@derive(...)` 不再生效，
+/// 若不提示，他会看到生成物"莫名其妙消失"。`generate` 据此产出迁移诊断，
+/// 把新写法直接写给他。取不到时返回空数组。
+pub fn TypeDef::legacy_derive_rules(self : TypeDef) -> Array[String] {
   let out : Array[String] = []
   for a in self.attrs {
     if a.name == "derive" {
