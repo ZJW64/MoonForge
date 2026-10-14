@@ -33,11 +33,25 @@ MoonForge fills that gap **in user space**, with **100% MoonBit**:
            → codegen → sibling *_derive_gen.mbt → compiled together with handwritten code
 ```
 
+The project is **general trait-derive infrastructure**, not "four rules and a script". A derive
+request is made of three parts, and every part is a real language-level thing:
+
+| Part | What it is | Example |
+|---|---|---|
+| **Target trait** | "what the type can do" — a plain MoonBit trait | `trait Validate { fn validate(Self) -> Result[Unit, String] }` |
+| **Marker trait** | "this type requests that derive" | `trait DeriveValidate { fn requested(Self) -> Unit }` |
+| **Rule** | "how to generate the implementation" — implements the SPI trait `DeriveRule` | `ValidateRule` |
+
 Three design decisions carry the project:
 
-1. **Zero syntax intrusion.** Derive requests live in plain **doc comments**
-   (`/// @derive(validate, diff)`). No new attribute, no grammar change — the IDE and
-   `moon fmt` both stay happy.
+1. **The entry point is a real trait impl, not a doc comment.**
+   The user writes one line in the type's own file:
+   `pub impl @derive.DeriveValidate for User with fn requested(_self) {}`.
+   It is a **language-level** statement that the type requests this derive, so **`moon check`
+   really compiles it** — a typo in the marker name is caught at compile time, and any tool can
+   read it. (The entry deliberately does **not** use `derive(...)`: that only accepts the
+   compiler's built-in trait whitelist and rejects custom traits with
+   `Don't know how to derive trait X`, so it cannot serve as an extension point.)
 2. **Generated into the same directory as the source.** A MoonBit package boundary *is* a
    directory, and private fields are only visible within the same package. Generating in place
    allows direct field access **without forcing users to make fields `pub`**.
@@ -62,37 +76,47 @@ every skipped field or inapplicable rule is explained in the output.
 | Item | Detail |
 |---|---|
 | Lexer + subset parser + type-model IR | Only `struct` / `enum` at brace depth 0; `BodyKind` separates record / positional / missing body |
-| Rule interface & registry | `Rule` is a public plain value; adding a rule = one new file + one registry entry |
+| Derive infrastructure | `moonforge/derive`: 4 target traits + 4 marker traits; `DeriveRule` SPI + a heterogeneous `Array[&DeriveRule]` registry + three actionable diagnostics |
+| Rule interface & registry | Rules implement `pub(open) trait DeriveRule`; adding a rule = implement the trait + add it to the set. A third party can extend the tool **without modifying its source** |
 | **4 built-in rules** | `field_names`, `validate` (annotation-driven), `diff`, `to_pairs` |
 | CLI | `list-rules` / `explain` / `gen` / `check`; exit-code contract `0` / `1` / `2` |
-| Tests | **10 layers, 96 cases, green on both `js` and `wasm-gc`** |
-| One-command acceptance | `bash scripts/e2e.sh` — 6 stages: drift / tests / real compile / format stability / CRLF tolerance / exit-code contract |
+| Third-party extension sample | `examples/extension/`: ships its own target trait, marker trait and rule; a runnable proof that no core source was touched |
+| Tests | **11 layers, 119 cases, green on both `js` and `wasm-gc`** |
+| One-command acceptance | `bash scripts/e2e.sh` — 6 stages: drift / tests / real compile / format stability (incl. measured line-width budget) / CRLF tolerance / exit-code contract |
 | Examples | `examples/` ships inputs, the **committed generated file**, and tests that call generated methods directly |
 | CI | GitHub Actions, ubuntu **and** windows, format check + drift check + both backends |
 
 Explicitly **not** in scope: compiler plugins, runtime reflection, comptime. The project does not
-claim to extend `derive()` — `derive()`'s own behavior is untouched.
+claim to extend `derive()` — `derive()`'s own behavior is untouched, and deliberately does not use
+it as the entry point (see above).
+
+**Migration note.** The old entry-point form, a doc comment `/// @derive(validate, diff)`, is still
+recognised but no longer emits code: it produces a copy-pasteable migration message instead. The
+generated output shape also changed, so upgrading requires one `moonforge gen` run — the version
+string in the file header would have triggered a drift anyway.
 
 ## Evidence
 
 | Claim | How to verify |
 |---|---|
-| Generated code actually works | `examples/models_wbtest.mbt` calls `User::validate` / `User::diff` / `User::field_names` / `User::to_pairs`. **No handwritten implementation of these methods exists in the repository** |
+| Generated code actually works | `examples/models_wbtest.mbt` calls the generated `Validate::validate` / `Diff::diff` / `FieldNames::field_names` / `ToPairs::to_pairs`. **No handwritten implementation of these methods exists in the repository** |
 | Generated code actually compiles | The generated file is committed, so `moon check` really compiles it. Delete it and `moon check` fails |
 | Drift is caught | `moon run cmd/main -- check <dir>` returns exit code `1` after a source edit; locked in by e2e stage 6 |
-| Formatting cannot break the loop | The generator's bytes match `moon fmt`'s output (e2e stage 4) — otherwise one `moon fmt` run would make `check` report permanent drift |
+| Formatting cannot break the loop | The generator's bytes are **byte-identical** to `moon fmt`'s output (e2e stage 4); the line-width boundary is measured against the real `moonfmt` by `scripts/fmt_budget_probe.sh` — otherwise one `moon fmt` run would make `check` report permanent drift |
 | No false positives on Windows | A CRLF-converted generated file still passes `check` (e2e stage 5); `.gitattributes` pins `*.mbt` to LF |
-| Rules are genuinely pluggable | `to_pairs` was added as the 4th rule using exactly the documented flow — `lexer.mbt` / `parser.mbt` / `codegen.mbt` were not touched |
+| Rules are genuinely pluggable | `examples/extension/tocsv_wbtest.mbt` (5 cases) proves a third-party rule registers and takes effect **without changing a single line of MoonForge source**, that the package prefix is reused, that a custom-only rule set excludes the built-ins, and that unregistered markers are reported |
+| Format budget is measured, not guessed | `bash scripts/fmt_budget_probe.sh` → `OK: line-width budget 82 holds (4 of 4 wrapped)` |
 
 ```bash
 $ moon test --target js
-Total tests: 96, passed: 96, failed: 0.
+Total tests: 119, passed: 119, failed: 0.
 
 $ bash scripts/e2e.sh
 == 1/6 drift check: committed generated files match sources
 == 2/6 run tests
 == 3/6 compile check (including generated code)
 == 4/6 formatting: repo is formatted, generated output is format-stable
+OK: line-width budget 82 holds (4 of 4 wrapped)
 == 5/6 CRLF tolerance: check still passes after converting output to CRLF
 == 6/6 drift loop and exit-code contract
 OK: all end-to-end checks passed.
@@ -104,7 +128,7 @@ OK: all end-to-end checks passed.
 git clone https://github.com/ZJW64/MoonForge && cd MoonForge
 moon check                                             # compiles generated code too
 moon run cmd/main -- explain examples/models.mbt       # see the tool explain itself
-moon test --target js                                  # 96 cases
+moon test --target js                                  # 119 cases
 bash scripts/e2e.sh                                    # 6 end-to-end stages
 ```
 
@@ -112,8 +136,9 @@ bash scripts/e2e.sh                                    # 6 end-to-end stages
 
 | Version | Content | Status / blocker |
 |---|---|---|
-| v0.2.0 | `to_pairs` rule, newline normalization, stale-output cleanup, format self-consistency, stricter exit-code contract, multi-OS CI | ✅ **shipped** |
-| v0.3 | More rules (Builder / Visitor / `to_json`), `--target` variants, incremental generation | No blocker |
+| v0.2.0 | `to_pairs` rule, newline normalization, stale-output cleanup, stricter exit-code contract, multi-OS CI | ✅ shipped |
+| v0.3.0 | **Derive-infrastructure rework**: entry point moved to a language-level trait impl; `DeriveRule` SPI + heterogeneous rule-object array; third-party extension sample; line-width budget guard | ✅ **shipped** |
+| v0.4 | More rules (Builder / Visitor / `to_json`), `--target` variants, incremental generation | No blocker |
 | v1.0 | **Semantic (AST-level) code generation** | ⛔ Requires the compiler to expose AST access — does not exist today |
 | v2.0 | **Compile-time execution (comptime)** | ⛔ Requires compiler support for evaluating user functions at compile time — does not exist today |
 

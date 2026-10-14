@@ -8,7 +8,7 @@
 git clone https://github.com/ZJW64/MoonForge && cd MoonForge
 
 moon check                # 编译
-moon test --target js      # 跑测试（96 个用例）
+moon test --target js      # 跑测试（119 个用例）
 bash scripts/e2e.sh       # 一条命令复现 CI 的全部检查（推荐提交前必跑）
 ```
 
@@ -19,12 +19,12 @@ bash scripts/e2e.sh       # 一条命令复现 CI 的全部检查（推荐提交
 
 | 步骤 | 命令 | 为什么 |
 |---|---|---|
-| 格式化 | `moon fmt` | 仓库必须通过 `moon fmt --check`。生成物也要对齐 `moonfmt` 的形状，否则用户格式化一次就会让 `check` 永久报漂移 |
+| 格式化 | `moon fmt` | 仓库必须通过 `moon fmt --check`。生成物也要与 `moonfmt` 的字节**逐字节一致**，否则用户格式化一次就会让 `check` 永久报漂移 |
 | 重新生成 | `moon run cmd/main -- gen examples` | 改了 `examples/` 或任何规则的输出格式，**必须同步提交生成物** |
 | 无漂移 | `moon run cmd/main -- check examples` | 生成物与源文件必须一致。这条挂了 CI 一定会红 |
 | 编译 | `moon check` | 生成代码的正确性由编译器裁决，不由工具的自我声明裁决 |
 | 测试 | `moon test --target js` | 单元 + 金样 + 幂等 + 集成 |
-| 端到端 | `bash scripts/e2e.sh` | 6 个阶段：漂移 / 测试 / 真编译 / 格式化稳定性 / CRLF 容忍 / 退出码契约 |
+| 端到端 | `bash scripts/e2e.sh` | 6 个阶段：漂移 / 测试 / 真编译 / 格式化稳定性（含列宽预算实测）/ CRLF 容忍 / 退出码契约 |
 
 `examples/models_derive_gen.mbt` 是**提交进仓库的**。这不是失误，是设计：
 让它参与 `moon check`，并且让 `check` 能检出"改了源码却忘记重新生成"。
@@ -74,7 +74,7 @@ fix(parser): 位置参数结构体吞并后续声明，并切干净字段类型�
 
 验证：
 - 新增 parser 单测：位置参数结构体后紧跟 Record，断言两者字段互不串味
-- moon test --target js → 96 passed
+- moon test --target js → 119 passed
 - bash scripts/e2e.sh 第 1 阶段断言生成物里不含 `Point::`
 ```
 
@@ -99,6 +99,16 @@ fix(parser): 位置参数结构体吞并后续声明，并切干净字段类型�
 任何让生成物字节发生变化的改动（换个空格、调个顺序、改成 `///|` 之外的形式），
 都必须在**同一条提交**里重新生成 `examples/`，并在 `CHANGELOG.md` 里记一条。
 否则所有用户的 `check` 会在升级后立刻报漂移——这是这类工具最容易被骂的地方。
+
+另有两条与输出格式相关的硬约束，改生成器时必须一起守住：
+
+| 约束 | 为什么 | 怎么守 |
+|---|---|---|
+| **生成物的 impl 头不超过 82 列** | `moonfmt` 会把 83 列起的行折开，生成物就与格式化结果不一致 → `check` 永久报漂移且 `gen` 治不好 | 生成的 impl 头**不写返回类型**；边界由 `scripts/fmt_budget_probe.sh` 实测钉住，并接进 `e2e.sh` 第 4 阶段 |
+| **`// moonforge:` 说明行与 `///|` 之间留一个空行** | 同上：`moon fmt` 要求独立注释块与其后的 item 之间有空行 | `codegen_wbtest.mbt` 里锁住了片段形状；`e2e.sh` 第 4 阶段端到端守卫 |
+
+规则的成员体由 `Fragment::impl_body` 提供，**它只写 `fn <方法名>(<参数>) {`，不抄返回类型**
+—— 返回类型由目标 trait 的声明唯一决定。理由见 `rule.mbt` 里 `Fragment::impl_body` 的契约说明。
 
 ## 7. Pull Request
 
