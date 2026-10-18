@@ -12,7 +12,7 @@
 fn frag_of(key : String, src : String) -> @forge.Fragment? {
   let td = @forge.parse_source(src)[0]
   match @forge.find_rule(all(), key) {
-    Some(r) => r.generate(td)
+    Some(r) => r.generate(@forge.DeriveInput::of(td))
     None => None
   }
 }
@@ -401,6 +401,55 @@ test "validate：@min 在数值字段上正常生成" {
       "  }", "  Ok(())", "}",
     ]),
   )
+}
+
+// ---------------------------------------------------------------------------
+// 前端无关性：规则只吃契约，不吃 parser
+// ---------------------------------------------------------------------------
+
+///|
+test "前端无关：手工构造 DeriveInput（完全不经过 parser）也能生成" {
+  // 这条测试是"parser 不是本项目核心贡献"的**直接证据**：规则只消费
+  // `DeriveInput`，因此只要有人能把任意前端（别的 parser、语法树工具、
+  // 甚至手写配置）适配成这个契约，整条生成链路照常工作。
+  // 换句话说，parser 是可替换的适配层，契约层才是这个项目的东西。
+  let input : @forge.DeriveInput = {
+    type_name: "Row",
+    body: @forge.Record,
+    fields: [
+      { name: "id", ty: "String", doc: "", attrs: [], line: 2, },
+      { name: "n", ty: "Int", doc: "", attrs: [], line: 3, },
+    ],
+    request: { prefix: "@d", marker: "DeriveFieldNames", line: 1, },
+  }
+  match @forge.find_rule(all(), "field_names") {
+    Some(r) =>
+      match r.generate(input) {
+        Some(f) =>
+          assert_eq(
+            f.impl_body,
+            code(["fn field_names(_self) {", "  [\"id\", \"n\"]", "}"]),
+          )
+        None => @debug.debug_inspect("unreachable", content="\"?\"")
+      }
+    None => @debug.debug_inspect("unreachable", content="\"?\"")
+  }
+  // 换一条规则同样成立：`to_pairs` 会跳过 Int 字段并留说明行，
+  // 而说明行里的类型名来自契约，不来自任何解析器。
+  match @forge.find_rule(all(), "to_pairs") {
+    Some(r) =>
+      match r.generate(input) {
+        Some(f) => {
+          assert_eq(
+            f.impl_body,
+            code(["fn to_pairs(self) {", "  [(\"id\", self.id)]", "}"]),
+          )
+          assert_eq(f.notes.length(), 1)
+        }
+        None => @debug.debug_inspect("unreachable", content="\"?\"")
+      }
+    None => @debug.debug_inspect("unreachable", content="\"?\"")
+  }
 }
 
 // ---------------------------------------------------------------------------

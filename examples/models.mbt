@@ -90,7 +90,7 @@ pub impl @derive.DeriveDiff for Order with fn requested(_self) {
 /// 状态枚举。
 ///
 /// 没有任何派生标记 → MoonForge 完全不碰它。
-/// 本期四条规则都要求"有具名字段的 struct"；若给它加上标记，
+/// 内置规则都要求"有具名字段的 struct"；若给它加上标记，
 /// 会得到"不适用"诊断而不是报错。
 pub(all) enum Status {
   Pending

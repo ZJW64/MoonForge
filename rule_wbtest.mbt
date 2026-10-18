@@ -17,7 +17,7 @@ impl DeriveRule for StubRule with fn head(_self) -> RuleHead {
 }
 
 ///|
-impl DeriveRule for StubRule with fn generate(_self, _td) -> Fragment? {
+impl DeriveRule for StubRule with fn generate(_self, _input) -> Fragment? {
   Some({ notes: [], impl_body: "fn stub(_self) -> Unit {\n}\n", })
 }
 
@@ -36,7 +36,7 @@ impl DeriveRule for NeverRule with fn head(_self) -> RuleHead {
 }
 
 ///|
-impl DeriveRule for NeverRule with fn generate(_self, _td) -> Fragment? {
+impl DeriveRule for NeverRule with fn generate(_self, _input) -> Fragment? {
   None
 }
 
@@ -119,7 +119,10 @@ test "generate 返回 None 表示不适用（不是错误）" {
   let rs : Array[&DeriveRule] = [NeverRule::{ } as &DeriveRule]
   match find_rule_by_marker(rs, "DeriveNever") {
     Some(r) =>
-      @debug.debug_inspect(r.generate(sample_type()) is None, content="true")
+      @debug.debug_inspect(
+        r.generate(DeriveInput::of(sample_type())) is None,
+        content="true",
+      )
     None => @debug.debug_inspect("unreachable", content="\"?\"")
   }
 }

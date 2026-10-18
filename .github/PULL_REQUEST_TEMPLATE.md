@@ -35,7 +35,7 @@
 提交前请确认下面每一项都真的跑过（不是"应该能过"）：
 
 - [ ] `moon check` → 通过
-- [ ] `moon test --target js` → 全部通过（当前基线：119 个用例）
+- [ ] `moon test --target js` → 全部通过（当前基线：126 个用例）
 - [ ] `moon test --target wasm-gc` → 全部通过
 - [ ] `moon fmt` 已执行，且 `moon fmt --check` → 通过
 - [ ] `moon run cmd/main -- check examples` → 退出码 `0`（无漂移）

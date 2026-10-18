@@ -22,15 +22,15 @@ pub impl @forge.DeriveRule for DiffRule with fn head(_self) -> @forge.RuleHead {
 }
 
 ///|
-pub impl @forge.DeriveRule for DiffRule with fn generate(_self, td) -> @forge.Fragment? {
-  if !td.has_named_fields() {
+pub impl @forge.DeriveRule for DiffRule with fn generate(_self, input) -> @forge.Fragment? {
+  if !input.has_named_fields() {
     return None
   }
   let b = StringBuilder()
   // 不带返回类型：由 trait 声明决定，理由见 `Fragment::impl_body` 的契约说明。
   b.write_string("fn diff(self, other) {\n")
   b.write_string("  let changed : Array[String] = []\n")
-  for f in td.fields {
+  for f in input.fields {
     b.write_string("  if self." + f.name + " != other." + f.name + " {\n")
     b.write_string("    changed.push(\"" + f.name + "\")\n")
     b.write_string("  }\n")

@@ -1,12 +1,22 @@
-// 类型模型（IR）：解析结果的唯一表示。
+// 类型模型（IR）：解析器的输出（内部表示）。
 //
-// 所有规则都只依赖这一层，因此“新增一条规则”不需要碰词法/语法代码。
+// **规则不直接依赖这一层** —— 它们只吃 `DeriveInput`（见 `derive_input.mbt`）。
+// 这里做的是"把源码读成结构"，那里做的是"告诉规则能依赖什么"；分两层是为了
+// 让 parser 可以整体替换：`DeriveInput` 是两者的接缝。
+//
+// 目录约定：`token/lexer/parser/type_model` 是**前端适配层**，
+// `derive_input/rule/derive/codegen` 是**契约与生成层**，`rules/` 是规则。
+// 前端的取舍见 `docs/核心贡献边界.md`。
 
 ///|
-/// 一条注解，例如 `@nonempty`、`@min(0)`、`@derive(validate, diff)`。
+/// 一条注解，例如字段上的 `@nonempty`、`@min(0)`。
 ///
 /// 参数保留为字符串，不在这里做语义解释 —— 语义由具体规则决定，
 /// 这样新增规则时无需修改本文件（开放-封闭）。
+///
+/// 注意：**类型级的 `@derive(...)` 不是派生入口**（入口是标记 trait 的真实
+/// `impl`，见 `parser.mbt`）。它只作为老写法的痕迹被保留下来，
+/// 供迁移诊断使用（见 `TypeDef::legacy_derive_rules`）。
 pub(all) struct Attr {
   name : String
   args : Array[String]
@@ -26,7 +36,8 @@ pub(all) struct FieldDef {
 } derive(Debug, Eq)
 
 ///|
-/// 类型种类。本期规则只对 `TStruct` 生效，`TEnum` 会被规则显式跳过。
+/// 类型种类。规则不该用它做前置判断，而该用 `DeriveInput::has_named_fields()`
+/// —— 后者同时挡住枚举与位置参数结构体。
 pub(all) enum TypeKind {
   TStruct
   TEnum
@@ -41,7 +52,7 @@ pub(all) enum TypeKind {
 /// 生成器就会对位置参数结构体生成出一个空字段列表 —— 语法上说得通、
 /// 语义上完全错误，而且编译器不会报错。
 pub(all) enum BodyKind {
-  /// `struct T { ... }`：有具名字段。四条内置规则只对这类类型生效。
+  /// `struct T { ... }`：有具名字段。按字段名展开的规则只对这类类型生效。
   Record
   /// `struct T(T1, T2)`：位置参数（元组）结构体，没有字段名。
   Positional
@@ -64,7 +75,8 @@ pub(all) struct TypeDef {
   /// 枚举构造器名；结构体时为空。
   variants : Array[String]
   doc : String
-  /// 类型级注解，`@derive(...)` 就在这里。
+  /// 类型级注解。老写法的 `@derive(...)` 会落在这里，但它**不再驱动生成**，
+  /// 只用于迁移诊断。
   attrs : Array[Attr]
   line : Int
 } derive(Debug, Eq)

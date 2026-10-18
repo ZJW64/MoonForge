@@ -45,12 +45,34 @@ MoonBit 的 `derive(...)` **只覆盖编译器内置的 trait 白名单**。官�
 
 **MoonForge 在用户态补上了这个派生注册点**：不修改编译器、不依赖编译器内部 API，用"源码到源码"的方式把这类代码生成变成可测试、可持续维护的工程资产。
 
+### 独立核心贡献：不是"能解析"，也不是"能生成"
+
+先把不该算贡献的部分摘出去：**解析 MoonBit 源码已有 `moonc` 与 [tree-sitter-moonbit](https://github.com/moonbitlang/tree-sitter-moonbit)，宏与模板展开已有 [MoonMacro](https://mooncakes.io/docs/faaaaa3/moonmacro)，拼字符串式的代码生成谁都会。** 本仓库自带的 `lexer.mbt` / `parser.mbt`（约 780 行）只是**前端适配层**，为了端到端能跑、为了不引入依赖；它随时可以被换掉。
+
+本项目的贡献是中间那一层 —— **把"派生"定义成三份可被复核的契约**：
+
+| 契约 | 内容 | 谁复核 |
+|---|---|---|
+| **入口契约** | 派生请求是一行真实 trait impl | `moon check`（拼错标记名 → 编译期报 unknown trait） |
+| **输入契约** | 规则只能看到 `DeriveInput`：类型名 / 字段体形态 / **归一化后的**字段 / 触发它的请求 | 6 条契约测试 |
+| **输出契约** | 规则只能返回 `Fragment`：说明行 + 成员体，且成员体不写返回类型 | `moon check` + `moon fmt`（逐字节）+ `check`（无漂移） |
+
+三个结构性事实支撑这个说法（不是形容词）：
+
+1. **前端可替换**：`rules/rules_wbtest.mbt` 里有一条测试**完全不经过 parser**，手工构造 `DeriveInput` 就直接生成代码 —— 换掉前端，规则一条都不用改；
+2. **规则可替换**：`examples/extension/` 不改内核就接入了一条第三方规则；
+3. **输出是 fmt 的固定点**：`scripts/fmt_budget_probe.sh` 用真实 `moonfmt` 实测 82 列边界，生成物与格式化结果逐字节相同。
+
+消融一下：删掉 parser，契约与规则仍工作；**删掉契约层，项目才真的退化成"少量模板 + 生成物管理"**。
+完整论证（含与 MoonMacro 的逐项分工）见 [`docs/核心贡献边界.md`](docs/核心贡献边界.md)。
+
 它是**通用 trait 派生基础设施**，不是"四条规则加一个脚本"：
 
 - 派生目标是一个**普通的 MoonBit trait**（`FieldNames` / `Validate` / `Diff` / `ToPairs`），
   用户在自己的包里实现它、也能定义**自己的** trait 与规则；
 - 规则本身是一个 trait（`DeriveRule`），规则集合是 `Array[&DeriveRule]` 的**trait 对象数组**
   —— 运行时多态，加规则不用改任何核心代码；
+- 规则只见**契约**（`DeriveInput`）不见解析器，所以前端与规则可以各自演化；
 - 入口是**真实的 trait impl**，不是工具私有的 DSL（见第 3 节）。
 
 ## 2. 它明确不是什么
@@ -290,13 +312,16 @@ moon run cmd/main -- check src
     │ (2) 子集语法分析    parser.mbt       —— 花括号深度 0 认 struct / enum，
     ▼                                        并识别 `impl <前缀>.<标记> for <类型>`
  类型模型 IR           type_model.mbt   —— TypeDef / FieldDef / Attr / BodyKind
-    │ (3) 规则分派        rule.mbt         —— 标记 trait → &DeriveRule（trait 对象）
+    │ (3) 输入契约        derive_input.mbt —— 归一化成 DeriveInput（前端到此为止）
+    ▼
+ DeriveInput（契约二）
+    │ (4) 规则分派        rule.mbt         —— 标记 trait → &DeriveRule（trait 对象）
     ▼
  代码片段              rules/*.mbt      —— field_names / validate / diff / to_pairs
-    │ (4) 组装 + 文件头   codegen.mbt      —— 幂等、字节稳定、列宽受预算约束
+    │ (5) 组装 + 文件头   codegen.mbt      —— 幂等、字节稳定、列宽受预算约束
     ▼
  <同目录>/<主干名>_derive_gen.mbt
-    │ (5) 和手写代码一起编译
+    │ (6) 和手写代码一起编译
     ▼
  moon check / moon test / CI
 ```
@@ -304,22 +329,23 @@ moon run cmd/main -- check src
 ```
 .
 ├── moon.mod / moon.pkg          # 模块与包元数据（本包 = 模块名 moonforge）
-├── token.mbt  lexer.mbt         # 词法
-├── type_model.mbt  parser.mbt   # IR 与子集语法分析
-├── rule.mbt  codegen.mbt        # 规则接口（SPI）/ 规则查找 / 代码组装
+├── token.mbt  lexer.mbt         # 【前端适配层】词法
+├── type_model.mbt  parser.mbt   # 【前端适配层】IR 与子集语法分析 —— 可整体替换
+├── derive_input.mbt             # 【契约层】规则输入的唯一定义（前端与规则的接缝）
+├── rule.mbt  codegen.mbt        # 【契约层】规则接口（SPI）/ 规则查找 / 代码组装
 ├── derive/                      # moonforge/derive —— 派生目标 trait + 标记 trait
 ├── rules/                       # moonforge/rules —— 内置规则 + 注册表
 ├── cmd/main/                    # moonforge/cmd/main —— CLI（executable）
 ├── examples/                    # 示例输入 + 已提交的生成物 + 端到端测试
 │   └── extension/               # 第三方规则示例（不改 moonforge 源码就加规则）
-├── *_wbtest.mbt                 # 白盒单元测试（每层各一个文件）
+├── *_wbtest.mbt                 # 白盒单元测试（每层各一个文件，含契约测试）
 ├── scripts/e2e.sh               # 本地一条命令复现 CI 的全部检查
 ├── scripts/fmt_budget_probe.sh  # 用真实 moonfmt 实测生成物的列宽预算
 ├── CONTRIBUTING.md              # 贡献流程 / 提交信息规范
 ├── 项目申报书.md                 # 赛事申报材料
 ├── .github/                     # CI 工作流 + Issue / PR 模板
 └── docs/                        # 一页项目说明 / 演示说明 / 项目方案（完善版）
-                                 #   + 扩展规则指南 / 验收自查清单 / 英文项目描述
+                                 #   + 核心贡献边界 / 扩展规则指南 / 验收自查清单 / 英文描述
 ```
 
 ### 可扩展性：规则是一个 trait，注册表是一个 trait 对象数组
@@ -342,8 +368,8 @@ pub trait DeriveFieldNames {
 
 ```moonbit
 pub(open) trait DeriveRule {
-  fn head(Self) -> RuleHead                    // 规则键 / 标记名 / 目标 trait 名 / 描述
-  fn generate(Self, TypeDef) -> Fragment?      // None = 该规则不适用于这个类型
+  fn head(Self) -> RuleHead                     // 契约一：身份
+  fn generate(Self, DeriveInput) -> Fragment?   // 契约二（输入）+ 契约三（输出）
 }
 
 pub fn all() -> Array[&@forge.DeriveRule] {
@@ -356,8 +382,13 @@ pub fn all() -> Array[&@forge.DeriveRule] {
 }
 ```
 
-**新增一条规则 = 新增一个文件 + 在 `rules/registry.mbt` 的数组里加一项 + 补一组测试。**
+**新增一条规则 = 实现一个 trait + 把对象放进集合 + 补一组契约用例。**
 不需要修改词法、语法、代码生成等任何核心代码。
+
+三份契约（身份 `RuleHead` / 输入 `DeriveInput` / 输出 `Fragment`）在 `rule.mbt` 顶部
+**一处定义**，术语表也在那里。`DeriveInput` 的保证（字段类型已 trim、无尾随逗号、
+无换行、空白折叠；只有具名字段才非空）由 `derive_input_wbtest.mbt` 的 6 条测试钉住 ——
+**契约是承诺，不是注释**。
 
 `examples/extension/` 是一个**可运行的第三方扩展样例**：它自带一个 `ToCsv` trait 与
 `DeriveToCsv` 标记、一个 `ToCsvRule`，把内置规则和自己的规则合成一个新集合后直接生成 ——
@@ -379,6 +410,7 @@ pub fn all() -> Array[&@forge.DeriveRule] {
 | L9 | 格式与换行：仓库自身通过 `moon fmt --check`；生成物与 `moon fmt` 的字节一致（否则格式化一次就永久报漂移）；生成物被换成 CRLF 后 `check` 仍须通过；**列宽预算用真实 `moonfmt` 现场实测** | `scripts/e2e.sh` 第 4 / 5 阶段 + `scripts/fmt_budget_probe.sh` + CI |
 | L10 | 契约与闭环：漂移 → 退出码 1，`gen` 后回到 0；路径不存在 / 非 `.mbt` / 传目录 → 退出码 2；源码去掉派生标记后 `gen` 清理残留生成物 | `scripts/e2e.sh` 第 6 阶段 + CI |
 | L11 | 扩展性证据：第三方规则不改内核即可注册生效、前缀复用、只用自定义规则时内置规则完全不出场、未注册标记被明确报出 | `examples/extension/tocsv_wbtest.mbt` |
+| L12 | **契约**：输入的归一化保证（无尾随逗号 / 无换行 / 空白折叠）、请求三字段原样传递、只有具名字段才非空、字段顺序、注解原样保留；以及**前端无关性**（不经 parser 手工构造 `DeriveInput` 也能生成） | `derive_input_wbtest.mbt` + `rules/rules_wbtest.mbt` |
 
 `examples/models_wbtest.mbt` 里的测试**直接调用自动生成的方法**：
 
@@ -392,10 +424,10 @@ pub fn all() -> Array[&@forge.DeriveRule] {
 
 ```bash
 $ moon test --target js
-Total tests: 119, passed: 119, failed: 0.
+Total tests: 126, passed: 126, failed: 0.
 
 $ moon test --target wasm-gc
-Total tests: 119, passed: 119, failed: 0.
+Total tests: 126, passed: 126, failed: 0.
 ```
 
 > 换一个后端再跑一遍是有意义的：js 与 wasm-gc 的整数语义、字符串表示都不同，
@@ -428,7 +460,7 @@ Total tests: 119, passed: 119, failed: 0.
 | MoonBit 为主 | **100% MoonBit**：词法 / 语法 / IR / 规则引擎 / CLI / 测试，无任何其他语言胶水 |
 | 仓库公开、记录可追踪 | <https://github.com/ZJW64/MoonForge>，公开仓库，提交历史按 `feat` / `fix` / `ci` / `docs` 分类，每条提交信息都写了"为什么改 + 怎么验证" |
 | 能够运行 | README 第 3 节的 5 条命令即可复现全流程；`examples/` 可直接运行 |
-| 工作有效（本期实质新增） | 从零实现：子集 lexer + parser + IR + **基于 trait 的规则引擎** + **4 条内置规则** + **第三方扩展样例** + CLI + **11 层测试**（119 个用例）；派生入口从"工具私有 doc comment"改为**语言级 trait impl**，并用 CRLF / 幂等 / 格式化稳定性 / 列宽预算把"生成物进仓库"这条路走通 |
+| 工作有效（本期实质新增） | 从零实现：子集 lexer + parser + IR + **基于 trait 的规则引擎** + **4 条内置规则** + **第三方扩展样例** + CLI + **12 层测试**（126 个用例）；派生入口从"工具私有 doc comment"改为**语言级 trait impl**，并用 CRLF / 幂等 / 格式化稳定性 / 列宽预算把"生成物进仓库"这条路走通 |
 | 可一键验收 | `bash scripts/e2e.sh` 在本地复现 CI 的全部 6 个阶段：漂移检查 / 测试 / 真编译 / 格式化与列宽预算 / CRLF 容忍 / 退出码契约 |
 | 开源合规 | `LICENSE` = **Apache-2.0**；**非移植项目，未复制任何第三方代码**；灵感来源见第 11 节 |
 | AI 可解释 | 每个关键取舍都记录在 `docs/项目方案（完善版）.md` 第 5.2 节与本 README 的第 2 / 9 节 |

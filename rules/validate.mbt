@@ -10,7 +10,7 @@
 
 ///|
 /// 判空检查：只对 `String` 有意义。
-fn nonempty_check(td : @forge.TypeDef, f : @forge.FieldDef) -> String? {
+fn nonempty_check(owner : String, f : @forge.FieldDef) -> String? {
   if f.ty != "String" {
     return None
   }
@@ -18,7 +18,7 @@ fn nonempty_check(td : @forge.TypeDef, f : @forge.FieldDef) -> String? {
     "  if self." +
     f.name +
     " == \"\" {\n    return Err(\"" +
-    td.name +
+    owner +
     "." +
     f.name +
     " must not be empty\")\n  }\n",
@@ -27,7 +27,7 @@ fn nonempty_check(td : @forge.TypeDef, f : @forge.FieldDef) -> String? {
 
 ///|
 /// 数值下界检查。
-fn min_check(td : @forge.TypeDef, f : @forge.FieldDef, v : String) -> String? {
+fn min_check(owner : String, f : @forge.FieldDef, v : String) -> String? {
   if !@forge.is_numeric_type(f.ty) {
     return None
   }
@@ -37,7 +37,7 @@ fn min_check(td : @forge.TypeDef, f : @forge.FieldDef, v : String) -> String? {
     " < " +
     v +
     " {\n    return Err(\"" +
-    td.name +
+    owner +
     "." +
     f.name +
     " must be >= " +
@@ -48,7 +48,7 @@ fn min_check(td : @forge.TypeDef, f : @forge.FieldDef, v : String) -> String? {
 
 ///|
 /// 数值上界检查。
-fn max_check(td : @forge.TypeDef, f : @forge.FieldDef, v : String) -> String? {
+fn max_check(owner : String, f : @forge.FieldDef, v : String) -> String? {
   if !@forge.is_numeric_type(f.ty) {
     return None
   }
@@ -58,7 +58,7 @@ fn max_check(td : @forge.TypeDef, f : @forge.FieldDef, v : String) -> String? {
     " > " +
     v +
     " {\n    return Err(\"" +
-    td.name +
+    owner +
     "." +
     f.name +
     " must be <= " +
@@ -69,7 +69,7 @@ fn max_check(td : @forge.TypeDef, f : @forge.FieldDef, v : String) -> String? {
 
 ///|
 /// 正数检查。
-fn positive_check(td : @forge.TypeDef, f : @forge.FieldDef) -> String? {
+fn positive_check(owner : String, f : @forge.FieldDef) -> String? {
   if !@forge.is_numeric_type(f.ty) {
     return None
   }
@@ -77,7 +77,7 @@ fn positive_check(td : @forge.TypeDef, f : @forge.FieldDef) -> String? {
     "  if self." +
     f.name +
     " <= 0 {\n    return Err(\"" +
-    td.name +
+    owner +
     "." +
     f.name +
     " must be positive\")\n  }\n",
@@ -87,28 +87,28 @@ fn positive_check(td : @forge.TypeDef, f : @forge.FieldDef) -> String? {
 ///|
 /// 一个字段上的全部检查。一个字段可以同时带多个注解（例如 `@min(0) @max(150)`），
 /// 因此这里返回数组而不是单个片段。
-fn field_checks(td : @forge.TypeDef, f : @forge.FieldDef) -> Array[String] {
+fn field_checks(owner : String, f : @forge.FieldDef) -> Array[String] {
   let out : Array[String] = []
   if f.has_attr("nonempty") {
-    match nonempty_check(td, f) {
+    match nonempty_check(owner, f) {
       Some(c) => out.push(c)
       None => ()
     }
   }
   if f.has_attr("positive") {
-    match positive_check(td, f) {
+    match positive_check(owner, f) {
       Some(c) => out.push(c)
       None => ()
     }
   }
   for v in f.attr_args("min") {
-    match min_check(td, f, v) {
+    match min_check(owner, f, v) {
       Some(c) => out.push(c)
       None => ()
     }
   }
   for v in f.attr_args("max") {
-    match max_check(td, f, v) {
+    match max_check(owner, f, v) {
       Some(c) => out.push(c)
       None => ()
     }
@@ -140,21 +140,21 @@ pub impl @forge.DeriveRule for ValidateRule with fn head(_self) -> @forge.RuleHe
 }
 
 ///|
-pub impl @forge.DeriveRule for ValidateRule with fn generate(_self, td) -> @forge.Fragment? {
-  if !td.has_named_fields() {
+pub impl @forge.DeriveRule for ValidateRule with fn generate(_self, input) -> @forge.Fragment? {
+  if !input.has_named_fields() {
     return None
   }
   let checks : Array[String] = []
   let notes : Array[String] = []
-  for f in td.fields {
-    let got = field_checks(td, f)
+  for f in input.fields {
+    let got = field_checks(input.type_name, f)
     for c in got {
       checks.push(c)
     }
     if got.length() == 0 && has_value_attr(f) {
       notes.push(
         "// moonforge: 跳过 " +
-        td.name +
+        input.type_name +
         "." +
         f.name +
         " 的校验注解（类型 " +

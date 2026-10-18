@@ -8,7 +8,7 @@
 git clone https://github.com/ZJW64/MoonForge && cd MoonForge
 
 moon check                # 编译
-moon test --target js      # 跑测试（119 个用例）
+moon test --target js      # 跑测试（126 个用例）
 bash scripts/e2e.sh       # 一条命令复现 CI 的全部检查（推荐提交前必跑）
 ```
 
@@ -74,7 +74,7 @@ fix(parser): 位置参数结构体吞并后续声明，并切干净字段类型�
 
 验证：
 - 新增 parser 单测：位置参数结构体后紧跟 Record，断言两者字段互不串味
-- moon test --target js → 119 passed
+- moon test --target js → 126 passed
 - bash scripts/e2e.sh 第 1 阶段断言生成物里不含 `Point::`
 ```
 
@@ -89,12 +89,41 @@ fix(parser): 位置参数结构体吞并后续声明，并切干净字段类型�
 
 ## 5. 加一条规则
 
-见 [`docs/扩展规则指南.md`](docs/扩展规则指南.md)。核心纪律一句话：
+见 [`docs/扩展规则指南.md`](docs/扩展规则指南.md)。核心纪律两条：
 
-> 生成物要能过 `moon check`。**只对类型名白名单内的类型生成代码，不确定就跳过并留说明行。**
+> ① 规则只消费 `DeriveInput`（输入契约），不看 `TypeDef`，也不要自己碰 parser；
+> ② 生成物要能过 `moon check`。**只对类型名白名单内的类型生成代码，不确定就跳过并留说明行。**
 > "生成编译不过的代码"比"少生成代码"严重得多。
 
-## 6. 改生成器输出格式 = 破坏性变更
+契约的具体保证（`f.ty` 已归一化、只有具名字段才非空……）由 `derive_input_wbtest.mbt`
+的 6 条测试钉住；改了契约就必须同时改那组测试。
+
+## 6. 术语与注释：一处定义，全仓库同一套词
+
+**术语表以 `rule.mbt` 顶部为准**（那里是 SPI 的定义处）。改注释前先看一眼，不要造新词：
+
+| 术语 | 指什么 | 不要写成 |
+|---|---|---|
+| **派生请求** | 用户写的那一行 `pub impl @derive.DeriveXxx for T with fn requested(_self) {}` | "标记"、"注解"、"@derive 指令" |
+| **标记 trait** | `DeriveXxx`，只表达"这个类型请求了这次派生" | "派生标记 trait"、"空 trait" |
+| **目标 trait** | `Xxx`，生成物要实现的 trait | "派生 trait"、"输出 trait" |
+| **规则** | 实现 `DeriveRule` 的类型 | "插件"、"模板" |
+| **生成物** | `*_derive_gen.mbt` | "产物"、"输出文件" |
+| **说明行** | 生成物里的 `// moonforge: ...` 注释 | "警告行"、"跳过注释" |
+
+三条注释纪律：
+
+1. **注释不许与实现矛盾。** 这一轮就是因为注释冲突被评审点名的：
+   `derive/derive.mbt` 的示例仍给生成物写着返回类型（而 0.3.0 起不写）、
+   `type_model.mbt` 的文件头仍说"所有规则都只依赖这一层"（而规则现在只见
+   `DeriveInput`）。**改实现时必须顺手改掉引用它的注释**，否则后来人会照错的注释改。
+2. **分层注释不越界。** IR 层（`type_model.mbt`）不许提"有几条规则"，
+   规则层不许提"parser 怎么切 token"。跨层的知识写进
+   [`docs/核心贡献边界.md`](docs/核心贡献边界.md) 或 `rule.mbt` 的契约表。
+3. **契约要写"保证"，不写"建议"。** `DeriveInput` 的约束用"保证 / 当且仅当"这类
+   可被测试的措辞，并且**必须有一条测试对得上**——否则它只是愿望。
+
+## 7. 改生成器输出格式 = 破坏性变更
 
 任何让生成物字节发生变化的改动（换个空格、调个顺序、改成 `///|` 之外的形式），
 都必须在**同一条提交**里重新生成 `examples/`，并在 `CHANGELOG.md` 里记一条。
@@ -110,7 +139,7 @@ fix(parser): 位置参数结构体吞并后续声明，并切干净字段类型�
 规则的成员体由 `Fragment::impl_body` 提供，**它只写 `fn <方法名>(<参数>) {`，不抄返回类型**
 —— 返回类型由目标 trait 的声明唯一决定。理由见 `rule.mbt` 里 `Fragment::impl_body` 的契约说明。
 
-## 7. Pull Request
+## 8. Pull Request
 
 用仓库的 [PR 模板](.github/PULL_REQUEST_TEMPLATE.md)。提交前自问三句：
 
@@ -118,12 +147,12 @@ fix(parser): 位置参数结构体吞并后续声明，并切干净字段类型�
 2. 如果是改输出，`examples/` 的生成物一起提交了吗？
 3. 提交信息里写清"为什么"和"怎么验证"了吗？
 
-## 8. Issue
+## 9. Issue
 
 - Bug：用 [Bug 报告模板](.github/ISSUE_TEMPLATE/bug_report.md)。**请附上能复现的最小 `.mbt` 片段**和 `moon version`——
   这类工具的问题高度依赖输入文本与工具链版本；
 - 新规则 / 新功能：用 [功能建议模板](.github/ISSUE_TEMPLATE/feature_request.md)。请写清"生成什么函数、前置条件是什么、跳过什么"。
 
-## 9. 许可证
+## 10. 许可证
 
 提交即表示你同意以 [Apache-2.0](LICENSE) 授权你的贡献。

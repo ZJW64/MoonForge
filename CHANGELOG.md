@@ -9,6 +9,93 @@
 > （`moonforge check` 返回 1），跑一次 `moonforge gen` 即可 —— 这是设计
 > 如此，不是故障。
 
+## [0.4.0] - 2026-09-23
+
+本轮回应的是另一条评审意见：**"已有 parser、MoonMacro、codegen 可复用，申报剩余主要为
+少量模板与生成物管理，请明确独立核心贡献并统一注释与 trait 输入契约。"**
+
+这条意见在事实层面成立，所以本轮不做辩解，而是两件事：
+① 把"什么不该算贡献"和"什么才是贡献"划成一条可验证的边界；
+② 把规则与前端之间的输入契约**真正抽出来**，让"parser 可替换"从说法变成有测试的事实。
+
+### 变更（破坏性）
+
+- **规则输入从 `TypeDef` 换成 `DeriveInput`（契约二）。**
+  `pub(open) trait DeriveRule { fn generate(Self, DeriveInput) -> Fragment? }`。
+  从此规则**看不到解析器的 IR**（`TypeDef` 里的 `variants` / `is_pub` / `doc` / `kind`
+  都与"按字段名展开"无关，交给规则等于把它们变成公开 API）。
+  `DeriveInput` 由 `derive_input.mbt` 定义，只含四处信息：类型名、字段体形态、
+  具名字段、**触发它的请求**（包前缀 / 标记名 / 行号）。
+  规则因此第一次拿得到位置信息，而不是只有一个裸类型。
+- **`explain` 与 `generate` 收敛到同一个输入契约。** 此前 `explain` 自己拼 `TypeDef`
+  去问规则"会不会生成"，与真实生成路径可能分叉 —— "工具说会生成、生成时却不生成"
+  是最难查的一类不一致。现在两边都构造 `DeriveInput`，这类不一致没有产生的空间。
+
+### 新增
+
+- **`docs/核心贡献边界.md`**：正面回答"独立核心贡献是什么"。含
+  ① 先摘出不该算贡献的部分（解析 / 宏 / 生成代码都有现成实现）；
+  ② 贡献陈述（把"派生"定义成三份可被复核的契约）；
+  ③ 三个结构性事实（前端可替换 / 规则可替换 / 输出是 fmt 固定点）；
+  ④ 与 MoonMacro 的逐项分工；
+  ⑤ **消融实验**：删掉 parser 项目还在，删掉契约层才退化成"少量模板"。
+- **输入契约的测试**（`derive_input_wbtest.mbt`，6 条）：归一化保证
+  （无尾随逗号 / 无换行 / 空白折叠）、请求三字段原样传递、只有具名字段才非空、
+  字段顺序 = 声明顺序、注解原样保留。**契约是承诺，所以必须被测试钉住**，
+  否则第三方规则会在自己仓库里悄悄生成错代码。
+- **前端无关性测试**（`rules/rules_wbtest.mbt`）：**完全不经过 parser**，
+  手工构造一个 `DeriveInput` 字面量直接调用规则并断言生成结果 ——
+  这是"parser 不是核心贡献"的直接证据：换掉整个前端，规则一条都不用改。
+- **术语表**（`rule.mbt` 顶部）：派生请求 / 标记 trait / 目标 trait / 规则 / 生成物 /
+  说明行，六个词在全仓库统一使用，注释与文档不再用别名。
+- `DeriveInput::field_names()`：把"顺序 = 声明顺序"这条约定收敛到一处实现，
+  规则不必各写一遍循环（也就不会各自写歪）。
+
+### 修复
+
+- **注释与实现互相矛盾**（"统一注释"要解决的就是这个）：
+  - `derive/derive.mbt` 的示例里，生成物仍写成
+    `impl @derive.FieldNames for User with fn field_names(self) -> Array[String] { ... }`
+    —— 带返回类型，与 0.3.0 定下的"生成物不写返回类型"直接冲突；
+  - `type_model.mbt` 仍把 `@derive(validate, diff)` 当作普通注解示例，
+    并在 `BodyKind::Record` 的注释里写死"四条内置规则只对这类类型生效"
+    （IR 层不该知道规则有几条）；
+  - `type_model.mbt` 的文件头仍写"所有规则都只依赖这一层"，与新的输入契约相反；
+  - `examples/models.mbt` 里还留着"本期四条规则"这类带时间感的表述。
+  → 全部改为与新契约一致的表述。
+- `validate` 的四个检查助手（`nonempty_check` 等）原本接收整个 `TypeDef`，
+  实际只用到一个类型名 → 收窄为 `String`，把"需要什么就拿什么"落实到签名上。
+
+### 兼容性（升级指南）
+
+- **第三方规则需要机械迁移**（语义不变）：
+
+  ```moonbit
+  // 0.3.x
+  pub impl @forge.DeriveRule for MyRule with fn generate(_self, td) -> @forge.Fragment? {
+    if !td.has_named_fields() { return None }
+    for f in td.fields { ... }
+    ... td.name ...
+  }
+
+  // 0.4.0
+  pub impl @forge.DeriveRule for MyRule with fn generate(_self, input) -> @forge.Fragment? {
+    if !input.has_named_fields() { return None }
+    for f in input.fields { ... }
+    ... input.type_name ...
+  }
+  ```
+
+  `DeriveInput::of(td)` 可直接从旧的 `TypeDef` 构造输入（不带请求），
+  `DeriveInput::requested(td, prefix, marker, line)` 构造带请求的输入。
+- 生成物头部的版本号变化 → 升级后跑一次 `moonforge gen` 即可，`check` 随之回到 0。
+
+### 测试
+
+- 用例数 119 → 126（新增 6 条契约测试 + 1 条前端无关性测试）。
+- 两个后端（js / wasm-gc）126/126；`bash scripts/e2e.sh` 6 阶段全过；
+  `bash scripts/fmt_budget_probe.sh` 列宽预算实测成立。
+
 ## [0.3.0] - 2026-09-23
 
 本轮的主题是**把派生入口从"工具私有的 doc comment"改成语言级的 trait impl**，
@@ -226,6 +313,7 @@
   已提交的生成物，以及直接调用生成代码的端到端测试。
 - GitHub Actions CI、`scripts/e2e.sh`、`docs/` 三份说明。
 
+[0.4.0]: https://github.com/ZJW64/MoonForge/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ZJW64/MoonForge/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ZJW64/MoonForge/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ZJW64/MoonForge/releases/tag/v0.1.0

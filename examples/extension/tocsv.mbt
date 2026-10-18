@@ -42,19 +42,19 @@ pub impl @forge.DeriveRule for ToCsvRule with fn head(_self) -> @forge.RuleHead 
 }
 
 ///|
-pub impl @forge.DeriveRule for ToCsvRule with fn generate(_self, td) -> @forge.Fragment? {
-  if !td.has_named_fields() {
+pub impl @forge.DeriveRule for ToCsvRule with fn generate(_self, input) -> @forge.Fragment? {
+  if !input.has_named_fields() {
     return None
   }
   let cells : Array[String] = []
   let notes : Array[String] = []
-  for f in td.fields {
+  for f in input.fields {
     if f.ty == "String" {
       cells.push("self." + f.name)
     } else {
       notes.push(
         "// moonforge: 跳过 " +
-        td.name +
+        input.type_name +
         "." +
         f.name +
         " 的 to_csv（类型 " +

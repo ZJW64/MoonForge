@@ -25,19 +25,19 @@ pub impl @forge.DeriveRule for ToPairsRule with fn head(_self) -> @forge.RuleHea
 }
 
 ///|
-pub impl @forge.DeriveRule for ToPairsRule with fn generate(_self, td) -> @forge.Fragment? {
-  if !td.has_named_fields() {
+pub impl @forge.DeriveRule for ToPairsRule with fn generate(_self, input) -> @forge.Fragment? {
+  if !input.has_named_fields() {
     return None
   }
   let pairs : Array[String] = []
   let notes : Array[String] = []
-  for f in td.fields {
+  for f in input.fields {
     if f.ty == "String" {
       pairs.push("(\"" + f.name + "\", self." + f.name + ")")
     } else {
       notes.push(
         "// moonforge: 跳过 " +
-        td.name +
+        input.type_name +
         "." +
         f.name +
         " 的 to_pairs（类型 " +

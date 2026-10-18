@@ -276,8 +276,12 @@ fn print_request(
     "   (line \{d.line})",
   )
   match @forge.find_rule_by_marker(rules, d.marker) {
-    Some(r) =>
-      match r.generate(td) {
+    Some(r) => {
+      // 与 `generate` 走**同一个**输入契约：`explain` 说"会生成"、生成时却
+      // 不生成（或反过来），是最难查的一类不一致。两边都从 `DeriveInput`
+      // 取输入，这条不一致就没有产生的空间。
+      let input = @forge.DeriveInput::requested(td, d.prefix, d.marker, d.line)
+      match r.generate(input) {
         Some(_) =>
           println(
             "      [ok] 规则 " +
@@ -293,6 +297,7 @@ fn print_request(
             @forge.not_applicable_reason(td),
           )
       }
+    }
     None =>
       println(
         "      [!!] 标记 trait `" +

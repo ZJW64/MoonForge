@@ -59,6 +59,37 @@ Three design decisions carry the project:
    `moonforge check` returns non-zero when a source file changed but its generated file did not.
    This turns generated code from a one-off script into a maintainable engineering asset.
 
+## The independent contribution (vs. existing reusable pieces)
+
+Parsers already exist (`moonc`, [tree-sitter-moonbit](https://github.com/moonbitlang/tree-sitter-moonbit)); macros and
+template expansion already exist ([MoonMacro](https://mooncakes.io/docs/faaaaa3/moonmacro)); string-concatenation
+codegen is trivial. **None of that counts as this project's contribution**, and the ~780 lines of
+lexer/parser in this repo are explicitly a *front-end adapter*.
+
+The contribution is the layer in between — **defining "derive" as three contracts that three
+different judges can check**:
+
+| Contract | Content | Checked by |
+|---|---|---|
+| Entry | A derive request is a real trait impl | `moon check` (a typo in the marker name fails to compile) |
+| Input | Rules only see `DeriveInput` (type name / body kind / normalised fields / the request that triggered it) | 6 contract tests |
+| Output | Rules only return `Fragment` (notes + members, no return type) | `moon check` + byte-identical `moon fmt` + drift-free `check` |
+
+Three structural facts back this up — none of them are adjectives:
+
+1. **The front end is replaceable.** A test in `rules/rules_wbtest.mbt` builds a `DeriveInput`
+   literal **without going through the parser at all** and still generates code; swapping the whole
+   front end would not change a single rule.
+2. **Rules are replaceable.** `examples/extension/` adds a third-party rule without touching the kernel.
+3. **Output is a fixed point of the formatter.** `scripts/fmt_budget_probe.sh` measures the 82-column
+   boundary against the real `moonfmt`; the generated file is byte-identical to its output.
+
+Ablation: delete the parser and the contracts plus the rules still work; **delete the contract layer
+and the project really does degrade to "a few templates plus artifact management"**.
+
+The full argument, including a point-by-point comparison with MoonMacro, is in
+[`核心贡献边界.md`](核心贡献边界.md) (Chinese).
+
 ## Boundary of the design
 
 Committed generated code participates in `moon check`, so **"generating code that does not
@@ -76,12 +107,12 @@ every skipped field or inapplicable rule is explained in the output.
 | Item | Detail |
 |---|---|
 | Lexer + subset parser + type-model IR | Only `struct` / `enum` at brace depth 0; `BodyKind` separates record / positional / missing body |
-| Derive infrastructure | `moonforge/derive`: 4 target traits + 4 marker traits; `DeriveRule` SPI + a heterogeneous `Array[&DeriveRule]` registry + three actionable diagnostics |
+| Derive infrastructure | `moonforge/derive`: 4 target traits + 4 marker traits; `DeriveRule` SPI; **`DeriveInput` as the single input contract** (front end and rules meet here); heterogeneous `Array[&DeriveRule]` registry; three actionable diagnostics |
 | Rule interface & registry | Rules implement `pub(open) trait DeriveRule`; adding a rule = implement the trait + add it to the set. A third party can extend the tool **without modifying its source** |
 | **4 built-in rules** | `field_names`, `validate` (annotation-driven), `diff`, `to_pairs` |
 | CLI | `list-rules` / `explain` / `gen` / `check`; exit-code contract `0` / `1` / `2` |
 | Third-party extension sample | `examples/extension/`: ships its own target trait, marker trait and rule; a runnable proof that no core source was touched |
-| Tests | **11 layers, 119 cases, green on both `js` and `wasm-gc`** |
+| Tests | **11 layers, 126 cases, green on both `js` and `wasm-gc`** |
 | One-command acceptance | `bash scripts/e2e.sh` — 6 stages: drift / tests / real compile / format stability (incl. measured line-width budget) / CRLF tolerance / exit-code contract |
 | Examples | `examples/` ships inputs, the **committed generated file**, and tests that call generated methods directly |
 | CI | GitHub Actions, ubuntu **and** windows, format check + drift check + both backends |
@@ -109,7 +140,7 @@ string in the file header would have triggered a drift anyway.
 
 ```bash
 $ moon test --target js
-Total tests: 119, passed: 119, failed: 0.
+Total tests: 126, passed: 126, failed: 0.
 
 $ bash scripts/e2e.sh
 == 1/6 drift check: committed generated files match sources
@@ -128,7 +159,7 @@ OK: all end-to-end checks passed.
 git clone https://github.com/ZJW64/MoonForge && cd MoonForge
 moon check                                             # compiles generated code too
 moon run cmd/main -- explain examples/models.mbt       # see the tool explain itself
-moon test --target js                                  # 119 cases
+moon test --target js                                  # 126 cases
 bash scripts/e2e.sh                                    # 6 end-to-end stages
 ```
 

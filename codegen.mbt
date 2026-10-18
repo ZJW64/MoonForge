@@ -5,7 +5,7 @@
 // 因此生成文件头里的 `source` 只写**文件名**而不是绝对路径，避免跨机器不一致。
 
 ///|
-pub const MOONFORGE_VERSION : String = "0.3.0"
+pub const MOONFORGE_VERSION : String = "0.4.0"
 
 ///|
 /// 把 CRLF / 单独的 CR 统一成 LF。
@@ -377,8 +377,16 @@ pub fn generate(
               diagnostics.push(
                 unknown_marker_message(rules, decl.marker, decl.line),
               )
-            Some(r) =>
-              match r.generate(td) {
+            Some(r) => {
+              // 契约二：规则只拿 `DeriveInput`。这里把"类型 + 触发它的请求"
+              // 一起装进去 —— 规则因此有位置信息可用，而不是只拿到一个裸类型。
+              let input = DeriveInput::requested(
+                td,
+                decl.prefix,
+                decl.marker,
+                decl.line,
+              )
+              match r.generate(input) {
                 None =>
                   diagnostics.push(
                     "规则 `" +
@@ -409,6 +417,7 @@ pub fn generate(
                   push_unique(used, key_of(r))
                 }
               }
+            }
           }
         }
       }

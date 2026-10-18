@@ -22,8 +22,8 @@ impl DeriveRule for DummyRule with fn head(_self) -> RuleHead {
 }
 
 ///|
-impl DeriveRule for DummyRule with fn generate(_self, td) -> Fragment? {
-  if !td.has_named_fields() {
+impl DeriveRule for DummyRule with fn generate(_self, input) -> Fragment? {
+  if !input.has_named_fields() {
     return None
   }
   Some({ notes: [], impl_body: "fn dummy(_self) -> Unit {\n}\n", })
@@ -43,7 +43,7 @@ impl DeriveRule for BetaRule with fn head(_self) -> RuleHead {
 }
 
 ///|
-impl DeriveRule for BetaRule with fn generate(_self, _td) -> Fragment? {
+impl DeriveRule for BetaRule with fn generate(_self, _input) -> Fragment? {
   Some({ notes: [], impl_body: "fn beta(_self) -> Unit {\n}\n", })
 }
 
@@ -61,7 +61,7 @@ impl DeriveRule for AlphaRule with fn head(_self) -> RuleHead {
 }
 
 ///|
-impl DeriveRule for AlphaRule with fn generate(_self, _td) -> Fragment? {
+impl DeriveRule for AlphaRule with fn generate(_self, _input) -> Fragment? {
   Some({ notes: [], impl_body: "fn alpha(_self) -> Unit {\n}\n", })
 }
 
@@ -80,7 +80,7 @@ impl DeriveRule for NamesStub with fn head(_self) -> RuleHead {
 }
 
 ///|
-impl DeriveRule for NamesStub with fn generate(_self, _td) -> Fragment? {
+impl DeriveRule for NamesStub with fn generate(_self, _input) -> Fragment? {
   Some({
     notes: [],
     impl_body: "fn field_names(_self) -> Array[String] {\n  []\n}\n",

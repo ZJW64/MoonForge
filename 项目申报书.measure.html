@@ -1,0 +1,43 @@
+<!DOCTYPE html><html><head><meta charset='utf-8'><style>@page{size:A4;margin:1.8cm 1.8cm}
+body { width: 17.40cm; font-family: "Microsoft YaHei","微软雅黑","SimSun",serif;
+        font-size: 11pt; line-height: 1.5; color: #000; }
+h1 { font-size: 16pt; font-weight: 700; margin: 0 0 6pt 0; line-height: 1.25; }
+h2 { font-size: 13pt; font-weight: 700; margin: 8pt 0 3pt 0; line-height: 1.25; }
+h3 { font-size: 12pt; font-weight: 700; margin: 6pt 0 3pt 0; line-height: 1.25; }
+p  { margin: 0 0 4pt 0; text-align: justify; }
+ul, ol { margin: 0 0 4pt 0; padding-left: 16pt; }
+li { margin: 0 0 1pt 0; text-align: justify; }
+code { font-family: Consolas,"Courier New",monospace; font-size: 10pt; }
+</style></head><body><h1>MoonForge 月铸：MoonBit 通用 trait 派生基础设施</h1>
+<h2>基本信息</h2>
+<ul>
+<li>项目名称：MoonForge 月铸：MoonBit 自定义派生代码生成器</li>
+<li>参赛者：张佳伟　｜　联系方式：15383279220</li>
+<li>仓库：https://github.com/ZJW64/MoonForge　｜　方向：MoonBit 语言与开发工具　｜　原创、非移植、Apache-2.0</li>
+</ul>
+<h2>项目简介</h2>
+<p>MoonBit 的 <code>derive()</code> 只认内置 trait 白名单（E4077），注册表硬编码、无对外入口。MoonForge 在用户态补齐：派生请求是一行真实 trait impl，由可插拔规则生成目标 trait 实现，生成物进仓库并受 <code>moon check</code>/<code>moon fmt</code>/漂移检查复核。</p>
+<p><strong>独有贡献不在"能解析/能生成"</strong>（已有 <code>moonc</code>、tree-sitter、MoonMacro；<code>lexer/parser</code> 只是前端），而在中间层：把"派生"定义成三份可复核的契约（见 <code>docs/核心贡献边界.md</code>）。</p>
+<h2>预期使用场景</h2>
+<ul>
+<li>接口校验：标记 + <code>@nonempty</code>/<code>@min</code>/<code>@max</code> 即得 <code>impl Validate for User</code>。</li>
+<li>审计与展示：<code>Diff</code> 返回变化字段名，<code>FieldNames</code>/<code>ToPairs</code> 给出字段清单。</li>
+<li>第三方派生：自己的 trait 加一条规则即可接入同一流水线。</li>
+</ul>
+<h2>拟实现的核心功能</h2>
+<ul>
+<li>前端适配层（可替换）+ 输入契约 <code>DeriveInput</code>：归一化字段与触发请求，6 条契约测试钉住。</li>
+<li>规则 SPI <code>DeriveRule { head(); generate() }</code>：三份契约在 <code>rule.mbt</code> 一处定义，规则集可替换。</li>
+<li>四条内置规则 + 第三方样例 <code>examples/extension/</code>（不改内核加规则）。</li>
+<li>CLI <code>list-rules</code>/<code>explain</code>/<code>gen</code>/<code>check</code>：生成物是 <code>moon fmt</code> 固定点，漂移即退出码 1。</li>
+</ul>
+<h2>预期验收产物</h2>
+<p><code>moon test</code>（js / wasm-gc）各 <strong>126 条全绿</strong>（含 7 条契约/前端无关性测试）；<code>e2e.sh</code> 6 阶段全过；删生成物则 <code>moon check</code> 失败；CI 双平台全绿。</p>
+<h2>原创或移植说明</h2>
+<p>原创，非移植，无第三方代码。灵感：Go <code>stringer</code>、Rust <code>serde</code> 分层、MoonMacro。</p>
+<h2>项目价值与生态定位</h2>
+<p>三条落点：① 规则只见 <code>DeriveInput</code>，换掉前端规则不用改（有<strong>不经过 parser</strong> 的测试）；② 返回 <code>None</code> 即"不适用"，翻成带行号诊断，纯文本宏无此概念；③ 输出是 fmt 固定点（82 列实测），规则集整体可替换。消融：删掉 parser 项目还在，删掉契约层才退化成"少量模板 + 生成物管理"。</p>
+<h2>交付范围与工程边界</h2>
+<p>交付可编译/可测试/可被 CI 校验的链路，非编译期框架；不做插件、反射、comptime。纪律：只对白名单内类型生成，不确定就跳过并留说明行。</p>
+<h2>实现路径与技术理解</h2>
+<p>两条路：等编译器开放插件接口，或在用户态做源码生成；后者今天能跑。三点理解：① 生成物须与源文件同目录（包边界即目录，私有字段仅同包可见）；② 入口须是语言里真实存在的东西（<code>derive(...)</code> 只认白名单、空 <code>impl</code> 块是语法错误）；③ 规则只该见契约、不该见解析器。</p><script>window.addEventListener('load',function(){document.title='H='+Math.ceil(document.body.scrollHeight);});</script></body></html>
