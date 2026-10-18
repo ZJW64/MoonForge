@@ -43,3 +43,14 @@ assignees: ""
 ## 补充
 
 如果是"生成物编译不过"，请**额外**贴上 `moon check` 的完整报错。这是最严重的一类问题，会优先处理。
+
+如果问题出在 CI 上（本地全绿、远端红），**请不要只贴截图**。截图里能看到的只有哪个
+step 打了红叉，看不到报错文本；请从那次 run 的日志里把该 step 的完整输出复制出来，
+尤其是这几行的原文：
+
+- `moon version` 打出的那一行（CI 装的是最新版工具链，可能与本地不同）
+- `Failed to calculate build plan` 后面的 `Caused by:` 链条
+- 任何 `Error:` / `FAIL:` 开头的行
+
+另外请注明 run 是 **ubuntu-latest 还是 windows-latest** —— 两个平台都要过，失败原因常常不同
+（例如 ubuntu 上脚本被 `noexec` 限制、windows 上换行被改成 CRLF）。
